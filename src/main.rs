@@ -1,4 +1,5 @@
 mod graphics;
+
 use graphics::run;
 
 fn main() {

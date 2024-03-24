@@ -5,6 +5,13 @@ use winit::{
 };
 
 mod state;
+mod pipeline;
+mod vertex;
+mod texture;
+mod camera;
+mod instance;
+mod model;
+mod resources;
 
 use state::State;
 

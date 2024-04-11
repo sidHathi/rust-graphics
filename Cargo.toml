@@ -20,6 +20,7 @@ tobj = { version = "3.2.1", features = [
 # Other dependencies
 reqwest = { version = "0.11" }
 cfg-if = "1"
+instant = "0.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 

@@ -12,8 +12,14 @@ mod camera;
 mod instance;
 mod model;
 mod resources;
+mod lighting;
 
 use state::State;
+pub use model::{
+  Mesh,
+  Material,
+  ModelVertex
+};
 
 pub async fn run() {
   env_logger::init();
@@ -21,8 +27,15 @@ pub async fn run() {
   let window = WindowBuilder::new().build(&event_loop).unwrap();
 
   let mut state = State::new(window).await;
+  let mut last_render_time = instant::Instant::now();
 
   event_loop.run(move |event, _, control_flow| match event {
+    Event::DeviceEvent {
+      event: DeviceEvent::MouseMotion{ delta, },
+      .. // We're not using device_id currently
+    } => if state.mouse_pressed {
+      state.camera_controller.process_mouse(delta.0, delta.1)
+    },
     Event::WindowEvent {
       ref event,
       window_id,
@@ -48,7 +61,10 @@ pub async fn run() {
       }
     },
     Event::RedrawRequested(window_id) if window_id == state.window().id() => {
-      state.update();
+      let now = instant::Instant::now();
+      let dt = now - last_render_time;
+      last_render_time = now;
+      state.update(dt);
       match state.render() {
         Ok(_) => {}
         Err(wgpu::SurfaceError::Lost) => state.resize(state.size),

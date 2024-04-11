@@ -59,18 +59,26 @@ impl Texture {
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     bytes: &[u8],
-    label: &str
+    label: &str,
+    is_normal_map: bool,
   ) -> Result<Self> {
     let img = image::load_from_memory(bytes)?;
-    Self::from_image(device, queue, &img, Some(label))
+    Self::from_image(device, queue, &img, Some(label), is_normal_map)
   }
 
   pub fn from_image(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     img: &image::DynamicImage,
-    label: Option<&str>
+    label: Option<&str>,
+    is_normal_map: bool,
   ) -> Result<Self> {
+    let format = if is_normal_map {
+      wgpu::TextureFormat::Rgba8Unorm
+    } else {
+      wgpu::TextureFormat::Rgba8UnormSrgb
+    };
+
     let rgba = img.to_rgba8();
     let dimensions = img.dimensions();
 
@@ -88,7 +96,7 @@ impl Texture {
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         // Most images are stored using sRGB, so we need to reflect that here.
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        format,
         // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
         // COPY_DST means that we want to copy data to this texture
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,

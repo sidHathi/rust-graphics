@@ -8,20 +8,15 @@ use super::model::{
 
 pub fn get_render_pipeline(
   device: &wgpu::Device, 
-  config: &wgpu::SurfaceConfiguration, 
-  texture_bind_group_layout: &wgpu::BindGroupLayout, 
-  camera_bind_group_layout: &wgpu::BindGroupLayout,
-  vert_entry: &str, frag_entry: &str
+  render_pipeline_layout: &wgpu::PipelineLayout,
+  color_format: wgpu::TextureFormat,
+  depth_format: Option<wgpu::TextureFormat>,
+  vertex_layouts: &[wgpu::VertexBufferLayout],
+  shader: wgpu::ShaderModuleDescriptor,
+  vert_entry: &str,
+  frag_entry: &str,
 ) -> wgpu::RenderPipeline {
-  let shader = device.create_shader_module(wgpu::include_wgsl!("../shader.wgsl"));
-  let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-    label: Some("Render Pipeline Layout"),
-    bind_group_layouts: &[
-      texture_bind_group_layout,
-      camera_bind_group_layout,
-    ],
-    push_constant_ranges: &[],
-  });
+  let shader = device.create_shader_module(shader);
 
   device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
     label: Some("Render Pipeline"),
@@ -29,16 +24,13 @@ pub fn get_render_pipeline(
     vertex: wgpu::VertexState {
       module: &shader,
       entry_point: vert_entry, // 1.
-      buffers: &[
-        ModelVertex::desc(),
-        InstanceRaw::desc(),
-      ], // 2.
+      buffers: vertex_layouts, // 2.
     },
     fragment: Some(wgpu::FragmentState { // 3.
       module: &shader,
       entry_point: frag_entry,
       targets: &[Some(wgpu::ColorTargetState { // 4.
-        format: config.format,
+        format: color_format,
         blend: Some(wgpu::BlendState::REPLACE),
         write_mask: wgpu::ColorWrites::ALL,
       })],
@@ -52,11 +44,11 @@ pub fn get_render_pipeline(
       polygon_mode: wgpu::PolygonMode::Fill, 
       conservative: false,
     },
-    depth_stencil: Some(wgpu::DepthStencilState {
-      format: Texture::DEPTH_FORMAT,
+    depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
+      format,
       depth_write_enabled: true,
-      depth_compare: wgpu::CompareFunction::Less, // 1.
-      stencil: wgpu::StencilState::default(), // 2.
+      depth_compare: wgpu::CompareFunction::Less,
+      stencil: wgpu::StencilState::default(),
       bias: wgpu::DepthBiasState::default(),
     }),
     multisample: wgpu::MultisampleState {

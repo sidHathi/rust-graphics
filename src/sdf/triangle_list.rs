@@ -1,4 +1,8 @@
-use super::triangle::Triangle;
+use log::trace;
+
+use super::triangle::{
+  Triangle
+};
 use std::hash::{
   Hash, Hasher
 };
@@ -10,6 +14,7 @@ impl<'a> Hash for Triangle<'a> {
   }
 }
 
+#[derive(Clone)]
 pub struct TriangleSet<'a> {
   set: HashSet<Triangle<'a>>
 }
@@ -31,7 +36,11 @@ impl<'a> TriangleSet<'a> {
     self.set.insert(val);
   }
 
-  pub fn remove(&mut self, val: &'a Triangle) -> bool {
+  pub fn remove(&mut self, val: &Triangle<'a>) -> bool {
     self.set.remove(val)
+  }
+
+  pub fn has(&self, triangle: &Triangle) -> bool {
+    self.set.contains(triangle)
   }
 }

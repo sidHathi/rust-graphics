@@ -1,16 +1,13 @@
-use cgmath::num_traits::float::FloatCore;
-use cgmath::num_traits::Float;
 use cgmath::{
   InnerSpace, Point3, Vector3
 };
-use std::borrow::BorrowMut;
-use std::cell::RefCell;
+use wgpu::util::DeviceExt;
 use std::cmp::{
   max,
   min
 };
+use std::os::macos::raw;
 use std::rc::Rc;
-use std::vec;
 
 use super::triangle::{
   TriVertex,
@@ -29,12 +26,10 @@ use crate::util::{
 };
 
 const MAX_NEIGHBOR_OFFSET: usize = 3;
+const NORMAL_TOL: f32 = 0.1;
 
-pub struct InferredVertexMesh<'a> {
-  triangles: TriangleSet<'a>,
+pub struct InferredVertexMesh {
   sdf: SdfShape,
-  raw_vertex_dims: Vector3<u128>,
-  raw_vertices: Vec<Vec<Vec<Option<TriVertex<'a>>>>>,
   bounds: SdfBounds, // what should this look like? -> x/y/z coord bounds needed ig?
   granularity: f32,
   inferred_mesh: Option<Mesh>,
@@ -125,7 +120,7 @@ fn populate_all_closest_vertices<'a>(vertex_arr: &'a Vec<Vec<Vec<Option<TriVerte
   // sliding 3x3x3 window
   let mut neighbors_map: PointDict<Vec<Option<&'a TriVertex<'a>>>> = PointDict::new();
   {
-    for (x_idx, plane) in vertex_arr.iter().enumerate() {
+    for (x_idx, plane) in (&vertex_arr).iter().enumerate() {
       // let mut plane_ref = Rc::new(plane);
       // need reference counters for each of the outer loops potentially
       for (y_idx, row) in plane.iter().enumerate() {
@@ -133,7 +128,7 @@ fn populate_all_closest_vertices<'a>(vertex_arr: &'a Vec<Vec<Vec<Option<TriVerte
           if let Some(vert) = vert_opt {
             // get the vertex's neighbors
             // add all of them as references in the triangle
-            let neighbors = get_vertex_neighbors(vertex_arr, vert, x_idx, y_idx, z_idx);
+            let neighbors = get_vertex_neighbors(&vertex_arr, vert, x_idx, y_idx, z_idx);
             neighbors_map.insert(Point3{x: x_idx as f32, y: y_idx as f32, z: z_idx as f32}, neighbors);
           }
         }
@@ -152,7 +147,7 @@ fn populate_all_closest_vertices<'a>(vertex_arr: &'a Vec<Vec<Vec<Option<TriVerte
   mutated_vec
 }
 
-fn compare_normal(sdf_shape: SdfShape, triangle: Triangle, tol: f32) -> bool {
+fn compare_normal(sdf_shape: &SdfShape, triangle: &Triangle, tol: f32) -> bool {
   let tri_center = triangle.midpoint();
   let tri_normal = triangle.face_normal();
   let normal = sdf_shape.compute_normal(tri_center);
@@ -162,8 +157,87 @@ fn compare_normal(sdf_shape: SdfShape, triangle: Triangle, tol: f32) -> bool {
   false
 }
 
-impl<'a> InferredVertexMesh<'a> {
-  pub fn construct(sdf_shape: SdfShape, bounds: SdfBounds, granularity: f32) -> InferredVertexMesh<'a> {
+fn get_triangles_from_vertex_list<'a>(vertices: Rc<Vec<Vec<Vec<Option<TriVertex<'a>>>>>>, sdf_shape: &'a SdfShape, normal_tol: f32) -> TriangleSet<'a> {
+  let mut triangle_set = TriangleSet::new();
+  for plane in vertices.iter() {
+    for row in plane {
+      for vert_opt in row {
+        if let Some(vert) = vert_opt {
+          for (idx1, idx2) in vert.get_possible_triangle_list() {
+            let vert1 = vert.get_neighbor_at_index(idx1).unwrap();
+            let vert2 = vert.get_neighbor_at_index(idx2).unwrap();
+            let triangle = Triangle::new(vert.clone(), vert1.clone(), vert2.clone());
+            if compare_normal(&sdf_shape, &triangle, normal_tol) {
+              triangle_set.insert(triangle);
+            }
+          }
+        } 
+      }
+    }
+  }
+  triangle_set
+}
+
+fn build_mesh<'a>(device: wgpu::Device, vertex_list_raw: &'a Vec<Vec<Vec<Option<TriVertex>>>>, active_indices: Vec<(usize, usize, usize)>, triangle_list: &TriangleSet, sdf_shape: &SdfShape) -> Mesh {
+  // idea:
+  // clone the triangle list
+  // add each vertex to the vertex list
+  // for each vertex construct all the possible triangles
+  // if the triangle is in the list -> remove it and add the indices to the index list
+  // if the triangle is not in the list, it's already been added or shouldn't be added, so skip it
+  let mut vertices: Vec<ModelVertex> = Vec::new();
+  let mut index_list: Vec<u16> = Vec::new();
+  let mut cloned_triangle_list = triangle_list.clone();
+  for (idx, (plane, row, col)) in active_indices.iter().enumerate() {
+    // loop over all the vertex's triangles
+    if let Some(vert) = &vertex_list_raw[*plane][*row][*col] {
+      for (n_idx1, n_idx2) in vert.get_possible_triangle_list() {
+        let vert1 = vert.get_neighbor_at_index(n_idx1).unwrap();
+        let vert2 = vert.get_neighbor_at_index(n_idx2).unwrap();
+        let triangle = Triangle::new(vert.clone(), vert1.clone(), vert2.clone());
+        if cloned_triangle_list.has(&triangle) {
+          // if the triangle is in the list, remove it
+          cloned_triangle_list.remove(&triangle);
+          // add the indices to the index buffer -> this requires finding the indices in the array rip -> the indices should probably be stored with the TriVertex in this case
+          index_list.push(vert.get_index() as u16);
+          index_list.push(vert1.get_index() as u16);
+          index_list.push(vert2.get_index() as u16);
+        }
+      }
+      vertices.push(vert.into_model_vertex(sdf_shape));
+    }
+  }
+
+  // index buffer
+  let index_slice: &[u16] = &index_list[..];
+  let index_buffer = device.create_buffer_init(
+    &wgpu::util::BufferInitDescriptor {
+      label: Some("Index buffer"),
+      contents: bytemuck::cast_slice(index_slice),
+      usage: wgpu::BufferUsages::INDEX
+    }
+  );
+
+  // vertex buffer
+  let vertex_buffer = device.create_buffer_init(
+    &wgpu::util::BufferInitDescriptor {
+      label: Some("Vertex buffer"),
+      contents: bytemuck::cast_slice(&vertices),
+      usage: wgpu::BufferUsages::VERTEX
+    }
+  );
+  
+  Mesh {
+    name: "Inferred mesh".into(),
+    index_buffer,
+    vertex_buffer,
+    num_elements: index_list.len() as u32,
+    material: 0
+  }
+}
+
+impl InferredVertexMesh {
+  pub fn construct(sdf_shape: SdfShape, bounds: SdfBounds, granularity: f32, device: wgpu::Device) -> InferredVertexMesh {
     // this should basically subdivide the bounds into tiny regions of size granularity,
     // then, if the sdf tolerance is within some fraction of the granularity value from the current point, it should generate a new vertex at the nearest point where the sdf function is zero (or just the current point maybe
     // then we want to store the vertices at the granularity index corresponding to its location lol
@@ -178,7 +252,9 @@ impl<'a> InferredVertexMesh<'a> {
 
     // 3d granularity vector -> each should correspond to a tiny cubic subdivision of the shape space
     // these subdivisions can basically model points within some error boundary of the center of the cubic region
-    let mut vec_3d: Vec<Vec<Vec<Option<TriVertex>>>> = Vec::new();
+    let mut curr_idx: usize = 0;
+    let mut active_indices: Vec<(usize, usize, usize)> = Vec::new();
+    let mut vec_3d: Vec<Vec<Vec<Option<TriVertex<'static>>>>> = Vec::new();
     for x in 0..dim_x {
       let mut y_arr: Vec<Vec<Option<TriVertex>>> = Vec::new();
       for y in 0..dim_y {
@@ -210,15 +286,30 @@ impl<'a> InferredVertexMesh<'a> {
             // -> ideally we would evaluate the point on the sdf boundary where the point is zero? -> 
             let mut sdf_loc = p.clone();
             sdf_shape.gradient_trace(p, &mut sdf_loc, None, None);
-            let vert = TriVertex::new(sdf_loc, None);
+            let vert = TriVertex::new(sdf_loc, curr_idx, None);
             add_vert(&mut vec_3d, vert, x_idx, y_idx, z_idx);
+            active_indices.push((x_idx, y_idx, z_idx));
+            curr_idx += 1;
           }
         }
       }
     }
-    
-    let completed_arr = populate_all_closest_vertices(&vec_3d);
 
-    todo!()
+    let completed_arr =  populate_all_closest_vertices(&vec_3d);
+    let completed_rc = Rc::new(completed_arr);
+    // convert the vertices into a list of triangles
+    let triangle_set = get_triangles_from_vertex_list(completed_rc.clone(), &sdf_shape, NORMAL_TOL);
+    let mesh = build_mesh(device, &vec_3d, active_indices, &triangle_set, &sdf_shape.clone());
+
+    InferredVertexMesh {
+      sdf: sdf_shape.clone(),
+      bounds,
+      granularity,
+      inferred_mesh: Some(mesh)
+    }
+  }
+
+  pub fn draw(&self) {
+    
   }
 }

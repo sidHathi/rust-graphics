@@ -5,6 +5,8 @@ use cgmath::{
 const EPSILON: f32 = 1e4;
 // the assumption is, that in this use case, the sphere trace guess should be almost correct
 const DEFAULT_TRACE_ITERS: usize = 1; 
+
+#[derive(Clone)]
 pub enum Shape {
   Sphere {
     center: Point3<f32>,
@@ -32,6 +34,7 @@ pub enum Shape {
   Custom(Vec<f32>),
 }
 
+#[derive(Clone)]
 pub struct SdfShape {
   shape: Shape,
   sdf_fn: fn(&Shape, Point3<f32>) -> f32

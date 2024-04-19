@@ -7,14 +7,19 @@ use std::hash::{
 };
 use std::rc::Rc;
 
+use crate::graphics::ModelVertex;
+
+use super::sdf_shape::{self, SdfShape};
+
 #[derive(Debug, Clone)]
 pub struct TriVertex<'a> {
   loc: Point3<f32>,
+  index: usize,
   closest_vertices: Vec<Option<&'a TriVertex<'a>>>
 }
 
 impl<'a> TriVertex<'a> {
-  pub fn new(loc: Point3<f32>, closest_vertices: Option<Vec<Option<&'a TriVertex>>>) -> TriVertex<'a> {
+  pub fn new(loc: Point3<f32>, index: usize, closest_vertices: Option<Vec<Option<&'a TriVertex>>>) -> TriVertex<'a> {
     // purpose of this is to guarantee that the closest vertex
     // vector is of length 26 (encompasses all possible slots)
     const DEF_ARR_VAL: Option<&'static TriVertex> = None;
@@ -25,9 +30,18 @@ impl<'a> TriVertex<'a> {
     }
     TriVertex {
       loc,
+      index,
       closest_vertices: closest_vertices_safe,
     }
   }
+
+  pub fn get_index(&self) -> usize {
+    self.index
+  }
+
+  pub fn change_index(&mut self, new_idx: usize) {
+    self.index = new_idx;
+  } 
 
   pub fn add_neighbor(&mut self, vert_slot: u8, vert: &'a TriVertex) {
     if vert_slot > 25 { return }
@@ -38,9 +52,55 @@ impl<'a> TriVertex<'a> {
     self.closest_vertices = neighbors;
   }
 
-  pub fn get_possible_triangle_list(&self) {
+  pub fn get_neighbor_at_index(&self, idx: usize) -> &Option<&TriVertex<'a>> {
+    self.closest_vertices.get(idx).unwrap()
+  }
+
+  pub fn into_model_vertex(&self, sdf_shape: &SdfShape) -> ModelVertex {
+    // initial implementation -> leave all the texcords at 0, 0
+    // populate normal using sdf
+    // binormal and bitangent (at least to some extent) are more relevant
+    // for depth texture mapping -> not sure if that's necessary right now
+    let normal = sdf_shape.compute_normal(self.loc);
+    let tex_coords: [f32; 2] = [0.0; 2];
+    let tangent: [f32; 3] = [0.0; 3];
+    let bitangent: [f32; 3] = [0.0; 3];
+    ModelVertex {
+      position: self.loc.into(),
+      tex_coords,
+      normal: normal.into(),
+      tangent,
+      bitangent
+    }
+  }
+
+  pub fn get_possible_triangle_list(&self) -> Vec<(usize, usize)> {
     // want all triples of vertices from the closest vertex list that include
     // the current TriVertex
+    let mut list: Vec<(usize, usize)> = Vec::new();
+    for (idx1, v1_opt) in self.closest_vertices.iter().enumerate() {
+      if let Some(v1) = v1_opt {
+        for (idx2, v2_opt) in self.closest_vertices.iter().enumerate() {
+          if let Some(v2) = v2_opt {
+            // check to make sure they're not colinear -> 
+            // requires extracting x, y, z idx
+            let x_idx_1 = (idx1 as f32 / 9.0).floor() as usize;
+            let x_idx_2 = (idx2 as f32 / 9.0).floor() as usize;
+            let y_idx_1 = ((idx1 - (9 * x_idx_1)) as f32 / 3.0).floor() as usize;
+            let y_idx_2 = ((idx2 - (9 * x_idx_2)) as f32 / 3.0).floor() as usize;
+            let z_idx_1 = (idx1 - (9 * x_idx_1) - (3 * y_idx_1)) as usize;
+            let z_idx_1 = (idx2 - (9 * x_idx_2) - (3 * y_idx_2)) as usize;
+
+            if (z_idx_1 == 1 && z_idx_1 == 2) || (y_idx_1 == 1 && y_idx_2 == 1) || (x_idx_1 == 1 && x_idx_2 == 2) {
+              // skip colinear vertices
+              continue;
+            }
+            list.push((idx1, idx2))
+          }
+        }
+      }
+    }
+    list
   }
 
   fn to_string(&self) -> String {

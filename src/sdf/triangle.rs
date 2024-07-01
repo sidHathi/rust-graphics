@@ -105,7 +105,14 @@ impl<'a> TriVertex<'a> {
 
   fn to_string(&self) -> String {
     let pt_str = format!("loc: {}, {}, {}", self.loc.x, self.loc.y, self.loc.z);
-    format!("{}, cv_len: {}", pt_str, self.closest_vertices.len())
+    format!("{}, index: {}, cv_len: {}", pt_str, self.index, self.closest_vertices.len())
+  }
+
+  pub fn debug_str(&self) -> String {
+    let mut out: String = String::new();
+    out += "TriVertex: ";
+    out += self.to_string().as_str();
+    return out;
   }
 }
 
@@ -163,6 +170,12 @@ impl<'a> Triangle<'a> {
     let v1 = self.b.loc - self.a.loc;
     let v2 = self.c.loc - self.a.loc;
     v1.cross(v2)
+  }
+
+  pub fn debug_str(&self) -> String {
+    let mut out = String::new();
+    out += format!("Triangle: a: {}, b: {}, c: {};", self.a.debug_str(), self.b.debug_str(), self.c.debug_str()).as_str();
+    return out;
   }
 }
 

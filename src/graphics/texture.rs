@@ -1,5 +1,8 @@
+use std::num::NonZeroU32;
+
 use image::GenericImageView;
 use anyhow::*;
+use wgpu::util::DeviceExt;
 
 pub struct Texture {
   pub texture: wgpu::Texture,
@@ -142,6 +145,102 @@ impl Texture {
       }
     );
 
+    Ok(Self {
+      texture,
+      view,
+      sampler,
+    })
+  }
+
+  pub fn from_raw(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    raw: Vec<u8>,
+    dims: (u32, u32),
+    label: &str,
+  ) -> Result<Self> {
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+      label: Some("Temp Buffer"),
+      contents: &raw,
+      usage: wgpu::BufferUsages::COPY_SRC,
+    });
+
+    let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    let buffer_copy_view = wgpu::ImageCopyBuffer {
+      buffer: &buffer,
+      layout: wgpu::ImageDataLayout {
+        offset: 0,
+        bytes_per_row: Some(4 * dims.0),
+        rows_per_image: Some(dims.1),
+      },
+    };
+
+    let texture_size = wgpu::Extent3d {
+      width: dims.0,
+      height: dims.1,
+      depth_or_array_layers: 1,
+    };
+    let texture = device.create_texture(
+      &wgpu::TextureDescriptor {
+        // All textures are stored as 3D, we represent our 2D texture
+        // by setting depth to 1.
+        size: texture_size,
+        mip_level_count: 1, // We'll talk about this a little later
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        // Most images are stored using sRGB, so we need to reflect that here.
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
+        // COPY_DST means that we want to copy data to this texture
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        label: Some(label),
+        // This is the same as with the SurfaceConfig. It
+        // specifies what texture formats can be used to
+        // create TextureViews for this texture. The base
+        // texture format (Rgba8UnormSrgb in this case) is
+        // always supported. Note that using a different
+        // texture format is not supported on the WebGL2
+        // backend.
+        view_formats: &[],
+      }
+    );
+
+    let texture_copy_view = wgpu::ImageCopyTexture {
+      texture: &texture,
+      mip_level: 0,
+      origin: wgpu::Origin3d::ZERO,
+      aspect: wgpu::TextureAspect::All,
+    };
+
+    command_encoder.copy_buffer_to_texture(buffer_copy_view, texture_copy_view, texture_size);
+    queue.submit(Some(command_encoder.finish()));
+
+    queue.write_texture(
+      texture_copy_view, 
+      &raw, 
+      wgpu::ImageDataLayout {
+        offset: 0,
+        bytes_per_row: Some(4 * dims.0),
+        rows_per_image: Some(dims.1),
+      },
+      texture_size
+    );
+
+    let view = texture.create_view(
+      &wgpu::TextureViewDescriptor::default()
+    );
+    let sampler = device.create_sampler(
+      &wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+      }
+    );
+  
     Ok(Self {
       texture,
       view,

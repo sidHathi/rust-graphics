@@ -462,7 +462,7 @@ impl State {
         true
       }
       _ => false,
-      }
+    }
   }
 
   pub fn update(&mut self, dt: instant::Duration) {

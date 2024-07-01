@@ -43,4 +43,13 @@ impl<'a> TriangleSet<'a> {
   pub fn has(&self, triangle: &Triangle) -> bool {
     self.set.contains(triangle)
   }
+
+  pub fn debug_str(&self) -> String {
+    let mut out: String = "".into();
+    for tri in self.set.iter() {
+      out += tri.debug_str().as_str();
+      out += "\n";
+    }
+    return out;
+  }
 }

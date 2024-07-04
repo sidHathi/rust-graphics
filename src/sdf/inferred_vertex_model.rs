@@ -1,12 +1,18 @@
+// this should be redone according to algo outlined here:
+// https://www.sci.utah.edu/~cscheid/pubs/tpss.pdf
+
 use cgmath::{
   InnerSpace, Point3, Vector3
 };
 use image::DynamicImage;
 use wgpu::util::DeviceExt;
+use std::clone;
 use std::cmp::{
   max,
   min
 };
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::os::macos::raw;
 use std::rc::Rc;
 
@@ -36,7 +42,7 @@ pub struct InferredVertexModel {
   pub bounds: SdfBounds, // what should this look like? -> x/y/z coord bounds needed ig?
   pub granularity: f32,
   pub inferred_mesh: Mesh,
-  pub vertex_coords: Vec<Point3<f32>>,
+  pub triangle_coords: Vec<[Point3<f32>; 3]>,
   pub diffuse_texture: Texture,
   pub diffuse_bind_group_layout: wgpu::BindGroupLayout,
   pub diffuse_bind_group: wgpu::BindGroup,
@@ -182,7 +188,7 @@ fn get_triangles_from_vertex_list<'a>(vertices: Rc<Vec<Vec<Vec<Option<TriVertex<
       }
     }
   }
-  println!("{}", triangle_set.debug_str());
+  // println!("{}", triangle_set.debug_str());
   triangle_set
 }
 
@@ -194,30 +200,44 @@ fn build_mesh<'a>(device: &wgpu::Device, vertex_list_raw: &'a Vec<Vec<Vec<Option
   // if the triangle is in the list -> remove it and add the indices to the index list
   // if the triangle is not in the list, it's already been added or shouldn't be added, so skip it
   let mut vertices: Vec<ModelVertex> = Vec::new();
-  let mut index_list: Vec<u16> = Vec::new();
-  let mut cloned_triangle_list = triangle_list.clone();
-  for (idx, (plane, row, col)) in active_indices.iter().enumerate() {
-    // loop over all the vertex's triangles
-    if let Some(vert) = &vertex_list_raw[*plane][*row][*col] {
-      for (n_idx1, n_idx2) in vert.get_possible_triangle_list() {
-        let vert1 = vert.get_neighbor_at_index(n_idx1).unwrap();
-        let vert2 = vert.get_neighbor_at_index(n_idx2).unwrap();
-        let triangle = Triangle::new(vert.clone(), vert1.clone(), vert2.clone());
-        if cloned_triangle_list.has(&triangle) {
-          // if the triangle is in the list, remove it
-          cloned_triangle_list.remove(&triangle);
-          // add the indices to the index buffer -> this requires finding the indices in the array rip -> the indices should probably be stored with the TriVertex in this case
-          index_list.push(vert.get_index() as u16);
-          index_list.push(vert1.get_index() as u16);
-          index_list.push(vert2.get_index() as u16);
-        }
-      }
-      vertices.push(vert.into_model_vertex(sdf_shape));
+  let mut index_list: Vec<u32> = Vec::new();
+  let cloned_triangle_list = triangle_list.clone();
+  let mut point_index_map: PointDict<u32> = PointDict::new();
+
+  for triangle in cloned_triangle_list.iter() {
+    let vert1 = triangle.a.clone();
+    let vert2 = triangle.b.clone();
+    let vert3 = triangle.c.clone();
+
+    let mut idx1: u32 = vertices.len() as u32;
+    if point_index_map.contains_key(&vert1.loc) {
+      idx1 = point_index_map.get(&vert1.loc).unwrap().clone();
+    } else {
+      vertices.push(vert1.clone().into_model_vertex(sdf_shape));
+      point_index_map.insert(vert1.loc.clone(), idx1);
     }
-  }
+    let mut idx2: u32 = vertices.len() as u32;
+    if point_index_map.contains_key(&vert2.loc) {
+      idx2 = point_index_map.get(&vert2.loc).unwrap().clone();
+    } else {
+      vertices.push(vert2.clone().into_model_vertex(sdf_shape));
+      point_index_map.insert(vert2.loc.clone(), idx2);
+    }
+    let mut idx3: u32 = vertices.len() as u32;
+    if point_index_map.contains_key(&vert3.loc) {
+      idx3 = point_index_map.get(&vert3.loc).unwrap().clone();
+    } else {
+      vertices.push(vert3.clone().into_model_vertex(sdf_shape));
+      point_index_map.insert(vert3.loc.clone(), idx3);
+    }
+
+    index_list.push(idx1);
+    index_list.push(idx2);
+    index_list.push(idx3);
+  } 
 
   // index buffer
-  let index_slice: &[u16] = &index_list[..];
+  let index_slice: &[u32] = &index_list[..];
   let index_buffer = device.create_buffer_init(
     &wgpu::util::BufferInitDescriptor {
       label: Some("Index buffer"),
@@ -234,6 +254,8 @@ fn build_mesh<'a>(device: &wgpu::Device, vertex_list_raw: &'a Vec<Vec<Vec<Option
       usage: wgpu::BufferUsages::VERTEX
     }
   );
+
+  // println!("{:?}", index_slice);
   
   Mesh {
     name: "Inferred mesh".into(),
@@ -245,7 +267,7 @@ fn build_mesh<'a>(device: &wgpu::Device, vertex_list_raw: &'a Vec<Vec<Vec<Option
 }
 
 impl InferredVertexModel {
-  fn construct_mesh(sdf_shape: &SdfShape, bounds: &SdfBounds, granularity: f32, device: &wgpu::Device) -> (Mesh, Vec<Point3<f32>>) {
+  fn construct_mesh(sdf_shape: &SdfShape, bounds: &SdfBounds, granularity: f32, device: &wgpu::Device) -> (Mesh, Vec<[Point3<f32>; 3]>) {
     // this should basically subdivide the bounds into tiny regions of size granularity,
     // then, if the sdf tolerance is within some fraction of the granularity value from the current point, it should generate a new vertex at the nearest point where the sdf function is zero (or just the current point maybe
     // then we want to store the vertices at the granularity index corresponding to its location lol
@@ -263,7 +285,7 @@ impl InferredVertexModel {
     let mut curr_idx: usize = 0;
     let mut active_indices: Vec<(usize, usize, usize)> = Vec::new();
     let mut vec_3d: Vec<Vec<Vec<Option<TriVertex<'static>>>>> = Vec::new();
-    let mut points: Vec<Point3<f32>> = Vec::new();
+    let mut points: Vec<[Point3<f32>; 3]> = Vec::new();
     for x in 0..dim_x {
       let mut y_arr: Vec<Vec<Option<TriVertex>>> = Vec::new();
       for y in 0..dim_y {
@@ -296,7 +318,7 @@ impl InferredVertexModel {
             let mut sdf_loc = p.clone();
             sdf_shape.gradient_trace(p, &mut sdf_loc, None, None);
             let vert = TriVertex::new(sdf_loc, curr_idx, None);
-            points.push(sdf_loc.clone());
+            // points.push(sdf_loc.clone());
             add_vert(&mut vec_3d, vert, x_idx, y_idx, z_idx);
             active_indices.push((x_idx, y_idx, z_idx));
             curr_idx += 1;
@@ -309,6 +331,13 @@ impl InferredVertexModel {
     let completed_rc = Rc::new(completed_arr);
     // convert the vertices into a list of triangles
     let triangle_set = get_triangles_from_vertex_list(completed_rc.clone(), &sdf_shape, NORMAL_TOL);
+    for triangle in triangle_set.iter() {
+      points.push([
+        triangle.a.loc.clone(),
+        triangle.b.loc.clone(),
+        triangle.b.loc.clone(),
+      ])
+    }
     let mesh = build_mesh(device, &vec_3d, active_indices, &triangle_set, &sdf_shape.clone());
     (mesh, points)
   }
@@ -383,7 +412,7 @@ impl InferredVertexModel {
       bounds: sdf_bounds,
       granularity,
       inferred_mesh: mesh,
-      vertex_coords: points,
+      triangle_coords: points,
       diffuse_texture: tex,
       diffuse_bind_group_layout: layout,
       diffuse_bind_group: bind_group

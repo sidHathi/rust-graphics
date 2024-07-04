@@ -20,9 +20,21 @@ pub use model::{
   Mesh,
   Material,
   ModelVertex,
+  Vertex,
+  Model,
+  DrawLight,
+  DrawModel,
 };
+pub use resources::*;
 pub use texture::Texture;
 pub use pipeline::get_render_pipeline;
+pub use camera::{
+  Camera,
+  CameraController,
+  Projection,
+  CameraUniform
+};
+pub use lighting::*;
 
 use self::iv_state::IVState;
 use super::playground::pg_state::PgState;

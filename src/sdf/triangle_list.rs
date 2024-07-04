@@ -6,7 +6,8 @@ use super::triangle::{
 use std::hash::{
   Hash, Hasher
 };
-use std::collections::HashSet;
+use std::collections::{hash_set, HashSet};
+use std::path::Iter;
 
 impl<'a> Hash for Triangle<'a> {
   fn hash<H: Hasher>(&self, state: &mut H) {
@@ -42,6 +43,10 @@ impl<'a> TriangleSet<'a> {
 
   pub fn has(&self, triangle: &Triangle) -> bool {
     self.set.contains(triangle)
+  }
+
+  pub fn iter(&self) -> hash_set::Iter<Triangle> {
+    self.set.iter()
   }
 
   pub fn debug_str(&self) -> String {

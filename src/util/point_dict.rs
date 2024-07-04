@@ -39,15 +39,19 @@ impl<T> PointDict<T> {
     self.map.insert(Point(key), val)
   }
 
-  pub fn remove(&mut self, key: Point3<f32>) -> Option<T> {
-    self.map.remove(&Point(key))
+  pub fn remove(&mut self, key: &Point3<f32>) -> Option<T> {
+    self.map.remove(&Point(key.clone()))
   }
 
-  pub fn get(&self, key: Point3<f32>) -> Option<&T> {
-    self.map.get(&Point(key))
+  pub fn get(&self, key: &Point3<f32>) -> Option<&T> {
+    self.map.get(&Point(key.clone()))
   }
 
   pub fn iter(&self) -> hash_map::Iter<Point, T> {
     self.map.iter()
+  }
+
+  pub fn contains_key(&self, key: &Point3<f32>) -> bool {
+    self.map.contains_key(&Point(key.clone()))
   }
 }

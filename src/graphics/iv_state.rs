@@ -95,7 +95,7 @@ impl IVState {
 
     // camera setup
     let camera = Camera::new(
-      (0.0, 30.0, 40.0),
+      (0.0, 5.0, 10.0),
       cgmath::Deg(-90.0), 
       cgmath::Deg(-20.0),
     );
@@ -182,13 +182,15 @@ impl IVState {
       )
     };
 
+
+    let center = Point3 {
+      x: 0.0,
+      y: 2.,
+      z: 0.,
+    };
     let sdf: SdfShape = SdfShape::new(Shape::Sphere { 
-      center: Point3 {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-      }, 
-      rad: 0.1 }, 
+      center, 
+      rad: 2. }, 
       |shape, point| {
         match shape {
           Shape::Sphere { center, rad } => {
@@ -200,18 +202,18 @@ impl IVState {
     );
 
     let bounds = SdfBounds {
-      xmin: -0.21,
-      xmax: 0.21,
-      ymin: -0.21,
-      ymax: 0.21,
-      zmin: -0.21,
-      zmax: 0.21
+      xmin: -2.1 + center.x,
+      xmax: 2.1 + center.x,
+      ymin: -2.1 + center.y,
+      ymax: 2.1 + center.y,
+      zmin: -2.1 + center.z,
+      zmax: 2.1 + center.z
     };
 
-    let iv_model = InferredVertexModel::new(&device, &queue, sdf, bounds, 0.05, &[200, 100, 0, 255]);
+    let iv_model = InferredVertexModel::new(&device, &queue, sdf, bounds, 0.025, &[200, 100, 0, 255]);
 
     // draw debug cubes
-    let debug_net = DebugCubeNet::new(&device, &config, iv_model.vertex_coords.clone(), 0.1);
+    let debug_net = DebugCubeNet::new(&device, &config, iv_model.triangle_coords.clone(), 0.015);
     
     // regular render pipeline
     let clear_color = (0.1, 0.2, 0.3, 1.0);
@@ -403,16 +405,16 @@ impl IVState {
       });
 
       use super::model::DrawLight;
-      render_pass.set_pipeline(&self.light_render_pipeline);
+      // render_pass.set_pipeline(&self.light_render_pipeline);
       // render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
 
-      // use super::super::sdf::DrawIVModel;
-      // render_pass.set_pipeline(&self.render_pipeline);
-      // render_pass.draw_iv_model(&self.iv_model, &self.camera_bind_group, &self.light_bind_group);
+      use super::super::sdf::DrawIVModel;
+      render_pass.set_pipeline(&self.render_pipeline);
+      render_pass.draw_iv_model(&self.iv_model, &self.camera_bind_group, &self.light_bind_group);
 
-      use crate::debug::DrawDebugNet;
-      render_pass.set_pipeline(&self.debug_render_pipeline);
-      render_pass.draw_debug_net(&self.debug_net, &self.camera_bind_group, &self.light_bind_group);
+      // use crate::debug::DrawDebugNet;
+      // render_pass.set_pipeline(&self.debug_render_pipeline);
+      // render_pass.draw_debug_net(&self.debug_net, &self.camera_bind_group, &self.light_bind_group);
     }
 
     self.queue.submit(std::iter::once(encoder.finish()));

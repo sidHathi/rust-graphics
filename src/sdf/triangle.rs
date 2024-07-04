@@ -13,7 +13,7 @@ use super::sdf_shape::{self, SdfShape};
 
 #[derive(Debug, Clone)]
 pub struct TriVertex<'a> {
-  loc: Point3<f32>,
+  pub loc: Point3<f32>,
   index: usize,
   closest_vertices: Vec<Option<&'a TriVertex<'a>>>
 }
@@ -79,9 +79,16 @@ impl<'a> TriVertex<'a> {
     // the current TriVertex
     let mut list: Vec<(usize, usize)> = Vec::new();
     for (idx1, v1_opt) in self.closest_vertices.iter().enumerate() {
+      // print!("Checking cv idx {} ", idx1);
       if let Some(v1) = v1_opt {
+        // print!("- Found!");
         for (idx2, v2_opt) in self.closest_vertices.iter().enumerate() {
+          // print!("Checking cv idx {} ", idx2);
           if let Some(v2) = v2_opt {
+            // print!(" - Found!");
+            if (idx1 == idx2) {
+              continue;
+            }
             // check to make sure they're not colinear -> 
             // requires extracting x, y, z idx
             let x_idx_1 = (idx1 as f32 / 9.0).floor() as usize;
@@ -89,11 +96,11 @@ impl<'a> TriVertex<'a> {
             let y_idx_1 = ((idx1 - (9 * x_idx_1)) as f32 / 3.0).floor() as usize;
             let y_idx_2 = ((idx2 - (9 * x_idx_2)) as f32 / 3.0).floor() as usize;
             let z_idx_1 = (idx1 - (9 * x_idx_1) - (3 * y_idx_1)) as usize;
-            let z_idx_1 = (idx2 - (9 * x_idx_2) - (3 * y_idx_2)) as usize;
+            let z_idx_2 = (idx2 - (9 * x_idx_2) - (3 * y_idx_2)) as usize;
 
-            if (z_idx_1 == 1 && z_idx_1 == 2) || (y_idx_1 == 1 && y_idx_2 == 1) || (x_idx_1 == 1 && x_idx_2 == 2) {
+            if (z_idx_1 == 0 && z_idx_2 == 2) || (y_idx_1 == 0 && y_idx_2 == 2) || (x_idx_1 == 0 && x_idx_2 == 2) {
               // skip colinear vertices
-              continue;
+              // continue;
             }
             list.push((idx1, idx2))
           }
@@ -132,9 +139,9 @@ impl<'a> Hash for TriVertex<'a> {
 
 #[derive(Clone)]
 pub struct Triangle<'a> {
-  a: TriVertex<'a>,
-  b: TriVertex<'a>,
-  c: TriVertex<'a>,
+  pub a: TriVertex<'a>,
+  pub b: TriVertex<'a>,
+  pub c: TriVertex<'a>,
 }
 
 impl<'a> Triangle<'a> {

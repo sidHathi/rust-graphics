@@ -189,7 +189,7 @@ impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     &mut self, 
     model: &'b Model, 
     camera_bind_group: &'b wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup,
+    light_bind_group: &'b wgpu::BindGroup,
   ) {
       self.draw_model_instanced(model, 0..1, camera_bind_group, light_bind_group)
   }

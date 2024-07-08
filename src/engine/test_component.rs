@@ -9,6 +9,7 @@ pub struct TestComponent {
   parent: Option<ComponentKey>,
   local_position: Point3<f32>,
   model: Option<RenderableModel>,
+  child: Option<Component>,
   active: bool,
 }
 
@@ -29,6 +30,11 @@ impl ComponentFunctions for TestComponent {
     } else {
       self.model = None;
     }
+
+    // load a child of same type
+    let child_underlying = Self::new();
+    let child = Component::new(child_underlying, scene, Some(self.key)).await;
+    self.child = child;
   }
 
   fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
@@ -50,6 +56,7 @@ impl TestComponent {
       key: ComponentKey::zero(),
       parent: None,
       model: None,
+      child: None,
       local_position: Point3 { x: 0., y: 0., z: 0. },
       active: false
     }

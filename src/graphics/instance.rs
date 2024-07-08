@@ -1,12 +1,11 @@
 use std::mem;
 use super::model::Vertex;
 
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Instance {
   pub position: cgmath::Vector3<f32>,
   pub rotation: cgmath::Quaternion<f32>,
 }
-
 
 impl Instance {
   pub fn to_raw(&self) -> InstanceRaw {

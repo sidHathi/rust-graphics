@@ -69,18 +69,4 @@ impl Component {
   pub fn render(&self, scene: &mut Scene) -> Result<(), EngineError> {
     self.underlying.lock().unwrap().render(scene)
   }
-
-  // pub fn get_model_keys(&self) -> Vec<String> {
-  //   let underlying_guard = self.underlying.lock().unwrap();
-  //   let mut keys = underlying_guard.model_keys().clone();
-  //   let mut child_keys: Vec<String> = underlying_guard
-  //     .children()
-  //     .iter()
-  //     .map(|child| child.get_model_keys().clone())
-  //     .collect::<Vec<Vec<String>>>()
-  //     .concat()
-  //     .clone();
-  //   keys.append(&mut child_keys);
-  //   keys
-  // }
 }

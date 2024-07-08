@@ -2,36 +2,42 @@ use std::sync::{Arc, Mutex};
 
 use cgmath::Rotation3;
 use winit::{event::{ElementState, KeyboardInput, MouseButton, WindowEvent}, window::Window};
-use wgpu::{util::DeviceExt};
+use wgpu::{util::DeviceExt, BindGroupLayout};
 
-use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, LightUniform, Projection, Texture};
+use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
 
-use super::{component::Component, component_models::ComponentModels, test_component::TestComponent};
+use super::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, test_component::TestComponent};
 
 // initial goal -> render a single component with a model
 // scene should essentially be akin to state from tutorial with a few additions
 // i.e. it manages the overarching render and update for all child components
-struct Scene {
+pub struct Scene {
   window: Window,
-  size: winit::dpi::PhysicalSize<u32>,
+  pub size: winit::dpi::PhysicalSize<u32>,
   device: wgpu::Device,
   queue: wgpu:: Queue,
   config: wgpu::SurfaceConfiguration,
   surface: wgpu::Surface,
-  components: Vec<Component<'static>>,
+  pub components: ComponentStore,
   projection: Projection,
   depth_texture: Texture,
+  texture_bind_group_layout: BindGroupLayout,
   camera: Camera,
   camera_uniform: CameraUniform,
-  camera_controller: CameraController,
+  pub camera_controller: CameraController,
   camera_buffer: wgpu::Buffer,
+  camera_bind_group: wgpu::BindGroup,
   light_uniform: LightUniform,
   light_buffer: wgpu::Buffer,
   light_bind_group_layout: wgpu::BindGroupLayout,
   light_bind_group: wgpu::BindGroup,
   light_render_pipeline: wgpu::RenderPipeline,
-  mouse_pressed: bool,
-  component_models: Arc<Mutex<ComponentModels>>,
+  pub mouse_pressed: bool,
+  clear_color: (f64, f64, f64, f64),
+  pub model_renderer: ModelRenderer,
+  render_pipeline_layout: wgpu::PipelineLayout,
+  render_pipeline: wgpu::RenderPipeline,
+  pub app: Option<Component>
 }
 
 impl Scene {
@@ -94,7 +100,7 @@ impl Scene {
 
     //camera
     let camera = Camera::new(
-      (0.0, 5.0, 10.0),
+      (0.0, 20.0, 50.0),
       cgmath::Deg(-90.0), 
       cgmath::Deg(-20.0),
     );
@@ -144,7 +150,7 @@ impl Scene {
 
     // lighting
     let light_uniform = LightUniform {
-      position: [2.0, 10.0, 2.0],
+      position: [2.0, 200.0, 2.0],
       _padding: 0,
       color: [1.0, 1.0, 1.0],
       _padding_2: 0,
@@ -225,41 +231,85 @@ impl Scene {
       }
     );
 
-
     // load a depth texture
     let depth_texture = Texture::create_depth_texture(&device, &&config, "depth texture");
 
+    // render pipeline
+    let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+      label: Some("Render Pipeline Layout"),
+      bind_group_layouts: &[
+        &texture_bind_group_layout,
+        &camera_bind_group_layout,
+        &light_bind_group_layout,
+      ],
+      push_constant_ranges: &[],
+    });
+    
+    use crate::graphics::{
+      Vertex,
+      ModelVertex,
+      
+    };
+    // pipline init/config
+    let render_pipeline = {
+      let shader = wgpu::ShaderModuleDescriptor {
+          label: Some("Normal Shader"),
+          source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+      };
+      get_render_pipeline(
+        &device,
+        &render_pipeline_layout,
+        config.format,
+        Some(Texture::DEPTH_FORMAT),
+        &[ModelVertex::desc(), InstanceRaw::desc()],
+        shader,
+        "vs_main", 
+        "fs_main"
+      )
+    };
+
     // model store
-    let model_store = Arc::new(Mutex::new(ComponentModels::new()));
-    let underlying = TestComponent::new();
-    let mut component = Component::new(underlying);
-    component.init(None, model_store.clone(), &device, &queue, &texture_bind_group_layout);
+    let model_renderer = ModelRenderer::new();
+    let mut components = ComponentStore::new();
 
-    let mut components: Vec<Component> = Vec::new();
-    components.push(component);
-
-    Self {
+    let mut scene = Self {
       window,
       size,
       device,
       queue,
       config,
       surface,
-      component_models: model_store,
+      model_renderer,
       components,
       projection,
       depth_texture,
+      texture_bind_group_layout,
       camera,
       camera_uniform,
       camera_controller,
+      camera_bind_group,
       light_uniform,
       light_buffer,
       light_bind_group_layout,
       light_bind_group,
       camera_buffer,
       light_render_pipeline,
+      render_pipeline,
+      render_pipeline_layout,
       mouse_pressed: false,
-    }
+      clear_color: (0.1, 0.2, 0.3, 1.),
+      app: None
+    };
+
+    let underlying = TestComponent::new();
+    let app = Component::new(
+      underlying,
+      &mut scene,
+      None,
+    ).await;
+    scene.app = app;
+
+    scene
   }
 
   pub fn window(&self) -> &Window {
@@ -306,7 +356,6 @@ impl Scene {
 
   pub fn update(&mut self, dt: instant::Duration) {
     // should also call component updates
-
     self.camera_controller.update_camera(&mut self.camera, dt);
     self.camera_uniform.update_view_proj(&self.camera, &self.projection);
     self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
@@ -320,6 +369,80 @@ impl Scene {
   }
 
   pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    // mark models to be rendered
+    if let Some(app) = self.app.clone() {
+      if let Err(err) = app.render(self) {
+        println!("render failed with err {}", err);
+      }
+    } else {
+      return Ok(());
+    }
+
+    let output = self.surface.get_current_texture()?;
+    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+      label: Some("Render encoder")
+    });
+
+    {
+      let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { 
+        label: Some("Render pass"), 
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+          view: &view,
+          resolve_target: None,
+          ops: wgpu::Operations {
+            load: wgpu::LoadOp::Clear(wgpu::Color {
+              r: self.clear_color.0,
+              g: self.clear_color.1,
+              b: self.clear_color.2,
+              a: self.clear_color.3,
+            }),
+            store: wgpu::StoreOp::Store,
+          },
+        })], 
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+          view: &self.depth_texture.view,
+          depth_ops: Some(wgpu::Operations {
+              load: wgpu::LoadOp::Clear(1.0),
+              store: wgpu::StoreOp::Store,
+          }),
+          stencil_ops: None,
+        }), 
+        timestamp_writes: None, 
+        occlusion_query_set: None 
+      });
+
+
+      use crate::graphics::DrawLight;
+      // render_pass.set_pipeline(&self.light_render_pipeline);
+      // render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
+
+      render_pass.set_pipeline(&self.render_pipeline);
+      for model_tuple in self.model_renderer.get_rendering_models() {
+        render_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
+        render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
+      }
+    }
+
+    self.queue.submit(std::iter::once(encoder.finish()));
+    output.present();
+    // clear model render list
+    self.model_renderer.clear();
     Ok(())
+  }
+
+  pub async fn load_model(&mut self, filename: &str, instances: Option<Vec<Instance>>, component_key: ComponentKey) -> Result<RenderableModel, EngineError> {
+    let load_res = self.model_renderer.load_model(filename, instances, component_key, &self.device, &self.queue, &self.texture_bind_group_layout).await;
+    if let Ok(model) = load_res {
+      return Ok(model)
+    } else {
+      println!("model load failed");
+      return load_res;
+    }
+  }
+
+  pub fn render_model(&mut self, model: &RenderableModel) -> Result<(), EngineError> {
+    // needs to position/rotate the model appropriately too
+    self.model_renderer.render(model)
   }
 }

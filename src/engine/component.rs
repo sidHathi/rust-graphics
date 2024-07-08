@@ -4,75 +4,83 @@ use cgmath::Point3;
 
 use crate::graphics::{DrawModel, Model};
 
-use super::component_models::ComponentModels;
+use super::{component_store::ComponentKey, errors::EngineError, model_renderer::ModelRenderer, Scene};
 use async_trait::async_trait;
 
 #[async_trait(?Send)]
-pub trait ComponentTrait<'a> {
+pub trait ComponentFunctions {
   // initialize the component
-  async fn init<'b>(
+  async fn init(
     &mut self,
-    parent: Option<&'a Component<'a>>,
-    model_store: Arc<Mutex<ComponentModels>>,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    tex_layout: &wgpu::BindGroupLayout
-  ) where 'a: 'b;
+    scene: &mut Scene,
+    key: ComponentKey,
+    parent: Option<ComponentKey>,
+  );
 
   // update is called every frame
-  fn update(&mut self, dt: instant::Duration);
-
-  // position the component with repsect to its parent
-  fn position(&mut self, pos: Point3<f32>);
-
-  // get all children
-  fn children(&self) -> Vec<&Component>;
+  fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
+    return;
+  }
 
   // get models to be rendered when this component is rendered
-  fn model_keys(&self) -> Vec<String>;
+  fn render(&self, scene: &mut Scene) -> Result<(), EngineError> {
+    Ok(())
+  }
 }
 
-pub struct Component<'a> {
-  underlying: Arc<Mutex<dyn ComponentTrait<'a>>>,
+#[derive(Clone)]
+pub struct Component {
+  pub key: ComponentKey,
+  underlying: Arc<Mutex<dyn ComponentFunctions>>,
 }
 
-impl<'a> Component<'a> {
-  pub fn new(underlying: impl ComponentTrait<'a> + 'static) -> Component<'a> {
-    Self {
+impl Component {
+  pub async fn new(
+    underlying: impl ComponentFunctions + 'static,
+    scene: &mut Scene,
+    parent: Option<ComponentKey>
+  ) -> Option<Component> {
+    let mut component = Self {
+      key: ComponentKey::zero(),
       underlying: Arc::new(Mutex::new(underlying))
+    };
+    let key_res = scene.components.insert(component.clone());
+    if let Ok(key) = key_res {
+      component.key = key;
+      component.clone().init(scene, key.clone(), parent).await;
+      return Some(component);
     }
+    None
   }
 
-  pub fn init<'b>(
+  pub async fn init(
     &mut self, 
-    parent: Option<&'a Component<'a>>, 
-    model_store:  Arc<Mutex<ComponentModels>>,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    tex_layout: &wgpu::BindGroupLayout
-  ) where 'a: 'b {
-    self.underlying.lock().unwrap().init(parent, model_store, device, queue, tex_layout);
+    scene: &mut Scene,
+    key: ComponentKey,
+    parent: Option<ComponentKey>,
+  ) {
+    self.underlying.lock().unwrap().init(scene, key, parent).await;
   }
 
-  pub fn update(&mut self, dt: instant::Duration) {
-    self.underlying.lock().unwrap().update(dt);
+  pub fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
+    self.underlying.lock().unwrap().update(scene, dt);
   }
 
-  pub fn position(&mut self, pos: Point3<f32>) {
-    self.underlying.lock().unwrap().position(pos);
+  pub fn render(&self, scene: &mut Scene) -> Result<(), EngineError> {
+    self.underlying.lock().unwrap().render(scene)
   }
 
-  pub fn get_model_keys(&self) -> Vec<String> {
-    let underlying_guard = self.underlying.lock().unwrap();
-    let mut keys = underlying_guard.model_keys().clone();
-    let mut child_keys: Vec<String> = underlying_guard
-      .children()
-      .iter()
-      .map(|child| child.get_model_keys().clone())
-      .collect::<Vec<Vec<String>>>()
-      .concat()
-      .clone();
-    keys.append(&mut child_keys);
-    keys
-  }
+  // pub fn get_model_keys(&self) -> Vec<String> {
+  //   let underlying_guard = self.underlying.lock().unwrap();
+  //   let mut keys = underlying_guard.model_keys().clone();
+  //   let mut child_keys: Vec<String> = underlying_guard
+  //     .children()
+  //     .iter()
+  //     .map(|child| child.get_model_keys().clone())
+  //     .collect::<Vec<Vec<String>>>()
+  //     .concat()
+  //     .clone();
+  //   keys.append(&mut child_keys);
+  //   keys
+  // }
 }

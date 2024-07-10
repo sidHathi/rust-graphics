@@ -6,7 +6,7 @@ use wgpu::{util::DeviceExt};
 
 use crate::graphics::{load_model, Instance, InstanceRaw, Model};
 
-use super::{component::Component, component_store::ComponentKey, errors::EngineError};
+use super::{component::Component, component_store::ComponentKey, transforms::{ComponentTransform, ModelTransform, TransformType}, errors::EngineError, transform_queue::TransformQueue};
 
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct RenderableModel {
@@ -29,6 +29,7 @@ pub struct ModelRenderer {
   next_idx: u32,
   render_list: Vec<RenderableModel>,
   models: HashMap<RenderableModel, RenderData>,
+  transform_queue: TransformQueue
 }
 
 impl ModelRenderer {
@@ -36,7 +37,8 @@ impl ModelRenderer {
     Self {
       next_idx: 0,
       render_list: Vec::new(),
-      models: HashMap::new()
+      models: HashMap::new(),
+      transform_queue: TransformQueue::new()
     }
   }
 
@@ -72,7 +74,7 @@ impl ModelRenderer {
       &wgpu::util::BufferInitDescriptor {
         label: Some("Instance buffer"),
         contents: bytemuck::cast_slice(&instance_data),
-        usage: wgpu::BufferUsages::VERTEX
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST
       }
     );
 
@@ -178,12 +180,134 @@ impl ModelRenderer {
     Ok(())
   }
 
-  pub fn render(&mut self, model: &RenderableModel) -> Result<(), EngineError> {
+  pub fn start_component_render(&mut self, transform: Option<ComponentTransform>) {
+    let transform_unwrapped = transform.unwrap_or(ComponentTransform::default());
+    self.transform_queue.push(transform_unwrapped);
+  }
+
+  pub fn end_component_render(&mut self) {
+    self.transform_queue.pop();
+  }
+
+  pub fn update_render_model(
+    &mut self, 
+    model: &RenderableModel,
+    transform: ModelTransform, 
+    queue: &wgpu::Queue,
+    device: &wgpu::Device,
+  ) -> Result<(), EngineError> {
+    if !self.models.contains_key(&model) {
+      return Err(EngineError::ArgumentError { index: 1, name: "model".into() })
+    }
+
+    let mut instanced = self.models.get(&model).unwrap().instanced;
+    let mut global_pos = self.models.get(&model).unwrap().global_pos;
+    let mut global_rot = self.models.get(&model).unwrap().global_rot;
+    let mut instance_vec = self.models.get(&model).unwrap().instances.clone();
+    let mut needs_buf_update = false;
+    match transform.clone() {
+      ModelTransform::Single { transform_type, pos, rot } => {
+        if transform_type == TransformType::Global {
+          if global_pos != pos || global_rot != rot {
+            needs_buf_update = true;
+            global_pos = pos;
+            global_rot = rot;
+            instance_vec[0] = Instance {
+              position: pos.clone(),
+              rotation: rot.clone()
+            }
+          }
+        } else {
+          let transformed = self.transform_queue.transform_model(&transform);
+          match transformed {
+            ModelTransform::Single { transform_type: _, pos: pos_t, rot: rot_t } => {
+              if global_pos != pos_t || global_rot != rot_t {
+                needs_buf_update = true;
+                global_pos = pos_t;
+                global_rot = rot_t;
+                instance_vec[0] = Instance {
+                  position: pos_t.clone(),
+                  rotation: rot_t.clone()
+                }
+              }
+            }
+            _ => {}
+          }
+
+        }
+      }
+      ModelTransform::Instanced { transform_type, instances } => {
+        if !instanced {
+          instanced = true;
+          needs_buf_update = true;
+        }
+        match transform_type {
+          TransformType::Global => {
+            for (idx, instance) in instances.iter().enumerate() {
+              if instance_vec[idx] != instance.clone() {
+                needs_buf_update = true;
+                break;
+              }
+            }
+            instance_vec = instances.clone()
+          },
+          TransformType::Local => {
+            let transformed = self.transform_queue.transform_model(&transform);
+            match transformed {
+              ModelTransform::Instanced { transform_type: _, instances: instances_t } => {
+                for (idx, instance) in instances_t.iter().enumerate() {
+                  if instance_vec[idx] != instance.clone() {
+                    needs_buf_update = true;
+                    break;
+                  }
+                }
+                instance_vec = instances_t.clone()
+              }
+              _ => {}
+            }
+          }
+        }
+      }
+    }
+    if needs_buf_update {
+      let mut render_data = self.models.remove(&model).unwrap();
+      render_data.instanced = instanced;
+      render_data.global_pos = global_pos;
+      render_data.global_rot = global_rot;
+      render_data.instances = instance_vec;
+      println!("updated render data -> global pos: {:?}, rotation: {:?}, instances: {:?}", render_data.global_pos, render_data.global_rot, render_data.instances);
+      let instance_data = render_data.instances
+        .iter()
+        .map(Instance::to_raw)
+        .collect::<Vec<InstanceRaw>>();
+
+      queue.write_buffer(&render_data.instance_buf, 0, bytemuck::cast_slice(&instance_data));
+      self.models.insert(model.clone(), render_data);
+    }
+    Ok(())
+  }
+
+  pub fn render_from_cache(&mut self, model: &RenderableModel) -> Result<(), EngineError> {
     if !self.models.contains_key(model) {
       return Err(EngineError::ArgumentError { index: 1, name: "model".into() })
     }
     self.render_list.push(model.clone());
     Ok(())
+  }
+
+  pub fn render(
+    &mut self, 
+    model: &RenderableModel, 
+    transform: ModelTransform, 
+    queue: &wgpu::Queue,
+    device: &wgpu::Device
+  ) -> Result<(), EngineError> {
+    if !self.models.contains_key(model) {
+      return Err(EngineError::ArgumentError { index: 1, name: "model".into() })
+    }
+    let res = self.update_render_model(model, transform.clone(), queue, device);
+    self.render_list.push(model.clone());
+    res
   }
 
   pub fn clear(&mut self) {

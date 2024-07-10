@@ -1,8 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use super::{component::{Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, Scene};
-use cgmath::Point3;
+use super::{component::{Component, ComponentFunctions}, component_store::ComponentKey, transforms::{ComponentTransform, ModelTransform}, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, Scene};
+use cgmath::{Point3, Quaternion, Vector3};
 use async_trait::async_trait;
+use super::test_child_component::TestChildComponent;
 
 pub struct TestComponent {
   key: ComponentKey,
@@ -30,9 +31,10 @@ impl ComponentFunctions for TestComponent {
     } else {
       self.model = None;
     }
+    // println!("model loaded");
 
     // load a child of same type
-    let child_underlying = Self::new();
+    let child_underlying = TestChildComponent::new();
     let child = Component::new(child_underlying, scene, Some(self.key)).await;
     self.child = child;
   }
@@ -46,7 +48,17 @@ impl ComponentFunctions for TestComponent {
       // println!("No model to render");
       return Ok(());
     }
-    scene.render_model(&self.model.as_ref().unwrap())
+    let res: Result<(), EngineError> = scene.render_model(&self.model.as_ref().unwrap(), ModelTransform::default());
+    if let Err(e) = res {
+        return Err(e);
+    }
+    if let Some(child_safe) = self.child.clone() {
+      return child_safe.render(scene, Some(ComponentTransform::local(
+        Vector3::new(20., 0., -50.), 
+        Quaternion::new(0.5, 0., 0., 0.)
+      )));
+    }
+    Ok(())
   }
 }
 

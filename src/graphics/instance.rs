@@ -1,7 +1,7 @@
 use std::mem;
 use super::model::Vertex;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Instance {
   pub position: cgmath::Vector3<f32>,
   pub rotation: cgmath::Quaternion<f32>,

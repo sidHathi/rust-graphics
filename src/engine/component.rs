@@ -4,7 +4,7 @@ use cgmath::Point3;
 
 use crate::graphics::{DrawModel, Model};
 
-use super::{component_store::ComponentKey, errors::EngineError, model_renderer::ModelRenderer, Scene};
+use super::{component_store::ComponentKey, transforms::ComponentTransform, errors::EngineError, model_renderer::ModelRenderer, Scene};
 use async_trait::async_trait;
 
 #[async_trait(?Send)]
@@ -66,7 +66,10 @@ impl Component {
     self.underlying.lock().unwrap().update(scene, dt);
   }
 
-  pub fn render(&self, scene: &mut Scene) -> Result<(), EngineError> {
-    self.underlying.lock().unwrap().render(scene)
+  pub fn render(&self, scene: &mut Scene, transform: Option<ComponentTransform>) -> Result<(), EngineError> {
+    scene.model_renderer.start_component_render(transform);
+    let res = self.underlying.lock().unwrap().render(scene);
+    scene.model_renderer.end_component_render();
+    res
   }
 }

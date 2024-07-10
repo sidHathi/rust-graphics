@@ -1,6 +1,6 @@
-use cgmath::{Matrix, Matrix3, Matrix4, Quaternion, SquareMatrix};
+use cgmath::{Matrix, Matrix3, Matrix4, Point3, Quaternion, SquareMatrix, Vector3};
 
-use super::component_transform::{ComponentTransform, ModelTransform, TransformType};
+use super::transforms::{ComponentTransform, ModelTransform, TransformType};
 
 use crate::graphics::Instance;
 use cgmath::Transform;
@@ -10,25 +10,29 @@ pub struct TransformQueue {
 }
 
 impl TransformQueue {
-  fn new() -> TransformQueue {
+  pub fn new() -> TransformQueue {
     Self {
       queue: Vec::new()
     }
   }
 
-  fn push(&mut self, transform: ComponentTransform) {
+  pub fn push(&mut self, transform: ComponentTransform) {
+    // println!("Adding transform");
     self.queue.push(transform)
   }
 
-  fn pop(&mut self) -> Option<ComponentTransform> {
+  pub fn pop(&mut self) -> Option<ComponentTransform> {
+    // println!("Removing transform");
     self.queue.pop()
   }
 
-  fn get_transform_matrix(&self) -> Matrix4<f32> {
-    self.queue.iter().fold(Matrix4::identity(), |acc, e| acc * e.to_matrix())
+  pub fn get_transform_matrix(&self) -> Matrix4<f32> {
+    let mat = self.queue.iter().fold(Matrix4::identity(), |acc, e| acc * e.to_matrix());
+    // println!("transform matrix: {:?}", mat);
+    mat
   }
 
-  fn transform_model(&self, model_transform: &ModelTransform) -> ModelTransform {
+  pub fn transform_model(&self, model_transform: &ModelTransform) -> ModelTransform {
     match model_transform.clone() {
       ModelTransform::Instanced { transform_type, instances } => {
         if transform_type == TransformType::Global {
@@ -47,7 +51,8 @@ impl TransformQueue {
           return model_transform.clone();
         }
         let rot_transformed = apply_transform(self.get_transform_matrix(), rot);
-        let pos_transformed = self.get_transform_matrix().transform_vector(pos);
+        let pos_transformed = to_vec(self.get_transform_matrix().transform_point(to_point(pos)));
+        // println!("Queue applied transform to single model. initial pos: {:?}, new pos: {:?}", pos, pos_transformed);
         return ModelTransform::Single { transform_type, pos: pos_transformed, rot: rot_transformed }
       }
     }
@@ -68,4 +73,12 @@ fn apply_transform(transform: Matrix4<f32>, rotation: Quaternion<f32>) -> Quater
 
   // Convert the transformed rotation matrix back to a quaternion
   Quaternion::from(transformed_rotation_matrix)
+}
+
+fn to_point(v: Vector3<f32>) -> Point3<f32> {
+  Point3::new(v.x, v.y, v.z)
+}
+
+fn to_vec(v: Point3<f32>) -> Vector3<f32> {
+  Vector3::new(v.x, v.y, v.z)
 }

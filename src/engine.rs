@@ -5,7 +5,9 @@ mod model_renderer;
 mod errors;
 mod component_store;
 mod async_closure;
-mod component_transform;
+mod transforms;
 mod transform_queue;
+mod test_child_component;
+mod state;
 
 pub use scene::Scene;

@@ -6,7 +6,7 @@ use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
 
-use super::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, test_component::TestComponent};
+use super::{component::Component, component_store::{ComponentKey, ComponentStore}, transforms::ModelTransform, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, test_component::TestComponent};
 
 // initial goal -> render a single component with a model
 // scene should essentially be akin to state from tutorial with a few additions
@@ -301,6 +301,8 @@ impl Scene {
       app: None
     };
 
+    println!("Scene initialized");
+
     let underlying = TestComponent::new();
     let app = Component::new(
       underlying,
@@ -308,6 +310,7 @@ impl Scene {
       None,
     ).await;
     scene.app = app;
+    println!("App initialized");
 
     scene
   }
@@ -371,10 +374,11 @@ impl Scene {
   pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
     // mark models to be rendered
     if let Some(app) = self.app.clone() {
-      if let Err(err) = app.render(self) {
+      if let Err(err) = app.render(self, None) {
         println!("render failed with err {}", err);
       }
     } else {
+      println!("No app found");
       return Ok(());
     }
 
@@ -419,6 +423,7 @@ impl Scene {
 
       render_pass.set_pipeline(&self.render_pipeline);
       for model_tuple in self.model_renderer.get_rendering_models() {
+        // println!("Rendering model: {:?}, {:?}", &model_tuple.0, &model_tuple.1);
         render_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
         render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
       }
@@ -441,8 +446,9 @@ impl Scene {
     }
   }
 
-  pub fn render_model(&mut self, model: &RenderableModel) -> Result<(), EngineError> {
+  pub fn render_model(&mut self, model: &RenderableModel, transform: ModelTransform) -> Result<(), EngineError> {
     // needs to position/rotate the model appropriately too
-    self.model_renderer.render(model)
+    self.model_renderer.render(model, transform, &self.queue, &self.device)
+    // self.model_renderer.render_from_cache(model)
   }
 }

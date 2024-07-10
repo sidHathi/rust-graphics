@@ -1,4 +1,5 @@
 use cgmath::{Matrix, Matrix4, Quaternion, Vector3};
+use tobj::Model;
 
 use crate::graphics::Instance;
 
@@ -32,10 +33,20 @@ impl ComponentTransform {
     }
   }
 
+  pub fn default() -> ComponentTransform {
+    Self {
+      transform_type: TransformType::Local,
+      pos: Vector3::new(0., 0., 0.),
+      rot: Quaternion::new(0., 0., 0., 0.)
+    }
+  }
+
   pub fn to_matrix(&self) -> cgmath::Matrix4<f32> {
     let rotation_mat = Matrix4::from(self.rot);
     let translation_mat: Matrix4<f32> = Matrix4::from_translation(self.pos);
-    translation_mat * rotation_mat
+    let combined = translation_mat * rotation_mat;
+    // println!("Rotation matrix: {:?}, Translation: {:?}, Combined: {:?}", rotation_mat, translation_mat, combined);
+    combined
   }
 }
 
@@ -74,5 +85,9 @@ impl ModelTransform {
       instances,
       transform_type,
     }
+  }
+
+  pub fn default() -> ModelTransform {
+    ModelTransform::Single { transform_type: TransformType::Local, pos: Vector3::new(0., 0., 0.), rot: Quaternion::new(0., 0., 0., 0.) }
   }
 }

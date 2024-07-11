@@ -6,7 +6,7 @@ use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
 
-use super::{component::Component, component_store::{ComponentKey, ComponentStore}, transforms::ModelTransform, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, test_component::TestComponent};
+use super::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, state::{Store, create_app_state}, test_component::TestComponent, transforms::ModelTransform};
 
 // initial goal -> render a single component with a model
 // scene should essentially be akin to state from tutorial with a few additions
@@ -37,7 +37,8 @@ pub struct Scene {
   pub model_renderer: ModelRenderer,
   render_pipeline_layout: wgpu::PipelineLayout,
   render_pipeline: wgpu::RenderPipeline,
-  pub app: Option<Component>
+  pub app: Option<Component>,
+  pub app_state: Store<'static>,
 }
 
 impl Scene {
@@ -271,6 +272,7 @@ impl Scene {
     // model store
     let model_renderer = ModelRenderer::new();
     let mut components = ComponentStore::new();
+    let app_state = create_app_state();
 
     let mut scene = Self {
       window,
@@ -298,7 +300,8 @@ impl Scene {
       render_pipeline_layout,
       mouse_pressed: false,
       clear_color: (0.1, 0.2, 0.3, 1.),
-      app: None
+      app: None,
+      app_state
     };
 
     println!("Scene initialized");

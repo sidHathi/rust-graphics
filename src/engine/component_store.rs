@@ -75,6 +75,10 @@ impl ComponentStore {
     self.components.get(key)
   }
 
+  pub fn get_mut(&mut self, key: &ComponentKey) -> Option<&mut Component> {
+    self.components.get_mut(key)
+  }
+
   pub fn remove(&mut self, key: &ComponentKey) -> Option<Component> {
     self.components.remove(key)
   }

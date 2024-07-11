@@ -4,15 +4,15 @@ use crate::engine::{component::Component, component_store::ComponentKey, errors:
 
 use super::state::State;
 
-pub struct Store {
+pub struct Store<'a> {
   state_map: HashMap<String, State>,
   single_state_listeners: HashMap<ComponentKey, HashMap<String, fn(&mut Component, &State) -> ()>>,
   multi_state_listeners: HashMap<ComponentKey, HashMap<String, fn(&mut Component, &HashMap<String, State>) -> ()>>,
-  triggered_single_functions: HashMap<ComponentKey, Vec<(String, fn(&mut Component, &State) -> ())>>,
-  triggered_multi_functions: HashMap<ComponentKey, Vec<fn(&mut Component, &HashMap<String, State>) -> ()>>
+  triggered_single_functions: HashMap<ComponentKey, Vec<(String,&'a fn(&mut Component, &State) -> ())>>,
+  triggered_multi_functions: HashMap<ComponentKey, Vec<&'a fn(&mut Component, &HashMap<String, State>) -> ()>>
 }
 
-impl Store {
+impl<'a> Store<'a> {
   pub fn create(app_state: Vec<(String, State)>) -> Self {
     let state_map = app_state.into_iter().collect();
     Self {
@@ -32,7 +32,7 @@ impl Store {
     self.state_map.remove(key)
   }
 
-  pub fn set_state(&mut self, key: String, val: State) -> Result<State, EngineError> {
+  pub fn set_state(&'a mut self, key: String, val: State) -> Result<State, EngineError> {
     if !self.state_map.contains_key(&key) {
       return Err(EngineError::ArgumentError { index: 1, name: "key".into() })
     }
@@ -61,7 +61,6 @@ impl Store {
     self.single_state_listeners.insert(component_key, listener_map);
     Err(EngineError::Custom("Listener set failed for unknown reason".into()))
   }
-
 
   pub fn listen_vec(&mut self, component_key: ComponentKey, state_keys: Vec<String>, callback: fn(&mut Component, &State) -> ()) -> Result<(), EngineError> {
     for state_key in &state_keys {
@@ -96,7 +95,7 @@ impl Store {
         used_keys.insert(state_key.clone());
         let val_opt = self.state_map.get(state_key);
         if let Some(val) = val_opt {
-          (*cb)(&mut component, val);
+          (**cb)(&mut component, val);
         } else {
           return Err(EngineError::StateAccessError { state_key: state_key.clone() });
         }
@@ -109,7 +108,7 @@ impl Store {
     for (key, callback_tuples) in self.triggered_multi_functions.iter() {
       let mut component = scene.components.remove(key).unwrap();
       for cb in callback_tuples {
-        (*cb)(&mut component, &self.state_map);
+        (**cb)(&mut component, &self.state_map);
       }
       let _ = scene.components.insert(component);
     }
@@ -117,10 +116,10 @@ impl Store {
     Ok(())
   }
 
-  pub fn handle_state_change(&mut self, state_key: String) {
+  pub fn handle_state_change(&'a mut self, state_key: String) {
     for (comp, cb_map) in self.single_state_listeners.iter_mut() {
       if cb_map.contains_key(&state_key) {
-        let func_opt = cb_map.remove(&state_key);
+        let func_opt = cb_map.get(&state_key);
         if let Some(func) = func_opt {
           if !self.triggered_single_functions.contains_key(comp) {
             self.triggered_single_functions.insert(comp.clone(), Vec::new());
@@ -132,7 +131,7 @@ impl Store {
 
     for (comp, cb_map) in self.multi_state_listeners.iter_mut() {
       if cb_map.contains_key(&state_key) {
-        let func_opt = cb_map.remove(&state_key);
+        let func_opt = cb_map.get(&state_key);
         if let Some(func) = func_opt {
           if !self.triggered_multi_functions.contains_key(comp) {
             self.triggered_multi_functions.insert(comp.clone(), Vec::new());

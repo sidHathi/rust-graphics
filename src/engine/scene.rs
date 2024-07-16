@@ -6,7 +6,7 @@ use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
 
-use super::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, state::{Store, create_app_state}, test_component::TestComponent, transforms::ModelTransform};
+use super::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, events::{Event, EventManager}, model_renderer::{ModelRenderer, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
 
 // initial goal -> render a single component with a model
 // scene should essentially be akin to state from tutorial with a few additions
@@ -38,7 +38,8 @@ pub struct Scene {
   render_pipeline_layout: wgpu::PipelineLayout,
   render_pipeline: wgpu::RenderPipeline,
   pub app: Option<Component>,
-  pub app_state: Store<'static>,
+  pub app_state: Store,
+  pub event_manager: EventManager
 }
 
 impl Scene {
@@ -273,6 +274,7 @@ impl Scene {
     let model_renderer = ModelRenderer::new();
     let mut components = ComponentStore::new();
     let app_state = create_app_state();
+    let event_manager = EventManager::new();
 
     let mut scene = Self {
       window,
@@ -301,7 +303,8 @@ impl Scene {
       mouse_pressed: false,
       clear_color: (0.1, 0.2, 0.3, 1.),
       app: None,
-      app_state
+      app_state,
+      event_manager
     };
 
     println!("Scene initialized");
@@ -343,7 +346,10 @@ impl Scene {
               ..
             },
         ..
-      } => self.camera_controller.process_keyboard(*key, *state),
+      } => {
+        self.event_manager.handle_event(Event::from(event).unwrap());
+        self.camera_controller.process_keyboard(*key, *state)
+      },
       WindowEvent::MouseWheel { delta, .. } => {
         self.camera_controller.process_scroll(delta);
         true
@@ -361,6 +367,15 @@ impl Scene {
   }
 
   pub fn update(&mut self, dt: instant::Duration) {
+    // trigger any event callbacks:
+    self.event_manager.trigger_callbacks(&mut self.components);
+    let _ = self.app_state.trigger_callbacks(&mut self.components);
+
+    let comp_clones: Vec<_> = self.components.iter().map(|(_, comp)| comp.clone()).collect();
+    for comp in comp_clones.iter() {
+      comp.update(self, dt);
+    }
+
     // should also call component updates
     self.camera_controller.update_camera(&mut self.camera, dt);
     self.camera_uniform.update_view_proj(&self.camera, &self.projection);

@@ -1,14 +1,14 @@
-use std::{ops::Deref, rc::Rc, sync::{Arc, Mutex, MutexGuard}};
+use std::{any::Any, ops::Deref, rc::Rc, sync::{Arc, Mutex, MutexGuard}};
 
 use cgmath::Point3;
 
 use crate::graphics::{DrawModel, Model};
 
-use super::{component_store::ComponentKey, transforms::ComponentTransform, errors::EngineError, model_renderer::ModelRenderer, Scene};
+use super::{component_store::ComponentKey, errors::EngineError, events::EventListener, model_renderer::ModelRenderer, state::StateListener, transforms::ComponentTransform, Scene};
 use async_trait::async_trait;
 
 #[async_trait(?Send)]
-pub trait ComponentFunctions {
+pub trait ComponentFunctions: Any + Send + EventListener + StateListener {
   // initialize the component
   async fn init(
     &mut self,
@@ -31,7 +31,7 @@ pub trait ComponentFunctions {
 #[derive(Clone)]
 pub struct Component {
   pub key: ComponentKey,
-  underlying: Arc<Mutex<dyn ComponentFunctions>>,
+  underlying: Arc<Mutex<Box<dyn ComponentFunctions>>>,
 }
 
 impl Component {
@@ -42,7 +42,7 @@ impl Component {
   ) -> Option<Component> {
     let mut component = Self {
       key: ComponentKey::zero(),
-      underlying: Arc::new(Mutex::new(underlying))
+      underlying: Arc::new(Mutex::new(Box::new(underlying)))
     };
     let key_res = scene.components.insert(component.clone());
     if let Ok(key) = key_res {
@@ -62,7 +62,7 @@ impl Component {
     self.underlying.lock().unwrap().init(scene, key, parent).await;
   }
 
-  pub fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
+  pub fn update(&self, scene: &mut Scene, dt: instant::Duration) {
     self.underlying.lock().unwrap().update(scene, dt);
   }
 
@@ -71,5 +71,18 @@ impl Component {
     let res = self.underlying.lock().unwrap().render(scene);
     scene.model_renderer.end_component_render();
     res
+  }
+}
+
+impl EventListener for Component {
+  fn handle_event(&mut self, event: super::events::Event) {
+    // Check if the trait object also implements AnotherTrait
+    self.underlying.lock().unwrap().handle_event(event)
+  }
+}
+
+impl StateListener for Component {
+  fn handle_state_change(&mut self, key: String, state: &super::state::State) {
+      self.underlying.lock().unwrap().handle_state_change(key, state)
   }
 }

@@ -1,4 +1,4 @@
-use std::{any, collections::HashMap, future::Future};
+use std::{any, borrow::Borrow, collections::{hash_map::{Iter, IterMut}, HashMap}, future::Future};
 
 use super::{async_closure::run_component_closure, component::{self, Component}, errors::EngineError};
 
@@ -45,14 +45,13 @@ impl ComponentStore {
   }
 
   pub fn modify<F>(&mut self, key: ComponentKey, modfunc: F) -> Option<&Component>
-    where F: Fn(Component) -> Component {
+    where F: Fn(&mut Component) -> () {
     if !self.components.contains_key(&key) {
       return None;
     }
 
-    let component = self.components.remove(&key).unwrap();
+    let component = self.components.get_mut(&key).unwrap();
     let modified = (modfunc)(component);
-    self.components.insert(key, modified);
     self.components.get(&key)
   }
 
@@ -65,9 +64,8 @@ impl ComponentStore {
       return None;
     }
 
-    let mut component = self.components.remove(&key).unwrap();
+    let mut component = self.components.get_mut(&key).unwrap();
     run_component_closure(modfunc, &mut component).await;
-    self.components.insert(key, component);
     self.components.get(&key)
   }
 
@@ -85,5 +83,13 @@ impl ComponentStore {
 
   pub fn keys(&self) -> Vec<&ComponentKey> {
     self.components.keys().into_iter().collect::<Vec<&ComponentKey>>()
+  }
+
+  pub fn iter(&self) -> Iter<ComponentKey, Component> {
+    self.components.iter()
+  }
+
+  pub fn iter_mut(&mut self) -> IterMut<ComponentKey, Component> {
+    self.components.iter_mut()
   }
 }

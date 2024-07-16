@@ -10,5 +10,6 @@ mod transform_queue;
 mod test_child_component;
 mod state;
 mod events;
+mod util;
 
 pub use scene::Scene;

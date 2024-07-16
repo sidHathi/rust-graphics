@@ -87,6 +87,28 @@ impl ModelTransform {
     }
   }
 
+  pub fn get_pos(&self) -> Vector3<f32> {
+    match self {
+      ModelTransform::Single { transform_type, pos, rot } => {
+        return pos.clone()
+      },
+      ModelTransform::Instanced { transform_type, instances } => {
+        return instances[0].position.clone()
+      }
+    }
+  }
+
+  pub fn get_rot(&self) -> Quaternion<f32> {
+    match self {
+      ModelTransform::Single { transform_type, pos, rot } => {
+        return rot.clone()
+      },
+      ModelTransform::Instanced { transform_type, instances } => {
+        return instances[0].rotation.clone()
+      }
+    }
+  }
+
   pub fn default() -> ModelTransform {
     ModelTransform::Single { transform_type: TransformType::Local, pos: Vector3::new(0., 0., 0.), rot: Quaternion::new(0., 0., 0., 0.) }
   }

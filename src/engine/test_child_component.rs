@@ -1,8 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use super::{component::{Component, ComponentFunctions}, component_store::ComponentKey, transforms::ModelTransform, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, Scene};
-use cgmath::Point3;
+use super::{component::{Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, transforms::ModelTransform, util::random_quaternion, Scene};
+use cgmath::{Point3, Quaternion};
 use async_trait::async_trait;
+use winit::event::{ElementState, KeyboardInput};
 
 pub struct TestChildComponent {
   key: ComponentKey,
@@ -10,6 +11,7 @@ pub struct TestChildComponent {
   local_position: Point3<f32>,
   model: Option<RenderableModel>,
   active: bool,
+  should_set_state: bool,
 }
 
 #[async_trait(?Send)]
@@ -29,10 +31,17 @@ impl ComponentFunctions for TestChildComponent {
     } else {
       self.model = None;
     }
+
+    let _ = self.add_event_listener(scene, &key, &EventKey::KeyboardEvent);
   }
 
   fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
-    todo!()
+    if self.should_set_state {
+      let quaternion = random_quaternion();
+      println!("setting new state: {:?}", quaternion);
+      let _ = scene.app_state.set_state("parent_rotation".into(), State::Quaternion(quaternion));
+      self.should_set_state = false;
+    }
   }
 
   fn render(&self, scene: &mut Scene) -> Result<(), EngineError> {
@@ -52,7 +61,27 @@ impl TestChildComponent {
       parent: None,
       model: None,
       local_position: Point3 { x: 0., y: 0., z: 0. },
-      active: false
+      active: false,
+      should_set_state: false,
     }
   }
 }
+
+impl EventListener for TestChildComponent {
+  fn handle_event(&mut self, event: super::events::Event) {
+      match event.data {
+        EventData::KeyboardEvent (KeyboardInput {
+          virtual_keycode: Some(key),
+          state,
+          ..
+        }) => {
+          if state == ElementState::Pressed {
+            self.should_set_state = true;
+          }
+        },
+        _ => {}
+      }
+  }
+}
+
+impl StateListener for TestChildComponent {}

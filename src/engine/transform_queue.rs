@@ -33,33 +33,34 @@ impl TransformQueue {
   }
 
   pub fn transform_model(&self, model_transform: &ModelTransform) -> ModelTransform {
-    match model_transform.clone() {
-      ModelTransform::Instanced { transform_type, instances } => {
-        if transform_type == TransformType::Global {
-          return model_transform.clone();
-        }
-        let instances_transformed = instances.iter()
-          .map(|i| Instance {
-            rotation: apply_transform(self.get_transform_matrix(), i.rotation),
-            position: self.get_transform_matrix().transform_vector(i.position)
-          })
-          .collect::<Vec<Instance>>();
-        return ModelTransform::instanced(instances_transformed, transform_type);
-      },
-      ModelTransform::Single { transform_type, pos, rot } => {
-        if transform_type == TransformType::Global {
-          return model_transform.clone();
-        }
-        let rot_transformed = apply_transform(self.get_transform_matrix(), rot);
-        let pos_transformed = to_vec(self.get_transform_matrix().transform_point(to_point(pos)));
-        // println!("Queue applied transform to single model. initial pos: {:?}, new pos: {:?}", pos, pos_transformed);
-        return ModelTransform::Single { transform_type, pos: pos_transformed, rot: rot_transformed }
+    let transform_type = model_transform.transform_type;
+    let pos = model_transform.pos;
+    let rot = model_transform.rot;
+    let instances = model_transform.instances.clone();
+    if model_transform.instanced {
+      if transform_type == TransformType::Global {
+        return model_transform.clone();
       }
+      let instances_transformed = instances.iter()
+        .map(|i| Instance {
+          rotation: apply_quaternion_transform(&self.get_transform_matrix(), i.rotation),
+          position: to_vec(self.get_transform_matrix().transform_point(to_point(pos)))
+        })
+        .collect::<Vec<Instance>>();
+      return ModelTransform::instanced(instances_transformed, transform_type);
+    } else {
+      if transform_type == TransformType::Global {
+        return model_transform.clone();
+      }
+      let rot_transformed = apply_quaternion_transform(&self.get_transform_matrix(), rot);
+      let pos_transformed = to_vec(self.get_transform_matrix().transform_point(to_point(pos)));
+      // println!("Queue applied transform to single model. initial pos: {:?}, new pos: {:?}", pos, pos_transformed);
+      return ModelTransform::local(pos_transformed, rot_transformed);
     }
   }
 }
 
-fn apply_transform(transform: Matrix4<f32>, rotation: Quaternion<f32>) -> Quaternion<f32> {
+pub fn apply_quaternion_transform(transform: &Matrix4<f32>, rotation: Quaternion<f32>) -> Quaternion<f32> {
   let rotation_matrix = Matrix3::from(rotation);
   // Extract the upper-left 3x3 submatrix of the transformation matrix
   let upper_left = Matrix3::new(
@@ -75,10 +76,10 @@ fn apply_transform(transform: Matrix4<f32>, rotation: Quaternion<f32>) -> Quater
   Quaternion::from(transformed_rotation_matrix)
 }
 
-fn to_point(v: Vector3<f32>) -> Point3<f32> {
+pub fn to_point(v: Vector3<f32>) -> Point3<f32> {
   Point3::new(v.x, v.y, v.z)
 }
 
-fn to_vec(v: Point3<f32>) -> Vector3<f32> {
+pub fn to_vec(v: Point3<f32>) -> Vector3<f32> {
   Vector3::new(v.x, v.y, v.z)
 }

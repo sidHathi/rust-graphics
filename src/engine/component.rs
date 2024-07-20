@@ -67,7 +67,7 @@ impl Component {
   }
 
   pub fn render(&self, scene: &mut Scene, transform: Option<ComponentTransform>) -> Result<(), EngineError> {
-    scene.model_renderer.start_component_render(transform);
+    scene.model_renderer.start_component_render(transform, self.key);
     let res = self.underlying.lock().unwrap().render(scene);
     scene.model_renderer.end_component_render();
     res

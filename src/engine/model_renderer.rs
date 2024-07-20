@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use anyhow::Error;
-use cgmath::{Point3, Quaternion, Rotation3, Vector3};
+use cgmath::{Matrix4, Point3, Quaternion, Rotation3, Vector3};
 use wgpu::{util::DeviceExt};
 
 use crate::graphics::{load_model, Instance, InstanceRaw, Model};
 
-use super::{component::Component, component_store::ComponentKey, transforms::{ComponentTransform, ModelTransform, TransformType}, errors::EngineError, transform_queue::TransformQueue};
+use super::{component::Component, component_store::ComponentKey, errors::EngineError, transform_queue::TransformQueue, transforms::{ComponentTransform, GlobalTransform, ModelTransform, TransformType}};
 
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct RenderableModel {
@@ -29,7 +29,8 @@ pub struct ModelRenderer {
   next_idx: u32,
   render_list: Vec<RenderableModel>,
   models: HashMap<RenderableModel, RenderData>,
-  transform_queue: TransformQueue
+  transform_queue: TransformQueue,
+  component_transform_cache: HashMap<ComponentKey, Matrix4<f32>>
 }
 
 impl ModelRenderer {
@@ -38,7 +39,8 @@ impl ModelRenderer {
       next_idx: 0,
       render_list: Vec::new(),
       models: HashMap::new(),
-      transform_queue: TransformQueue::new()
+      transform_queue: TransformQueue::new(),
+      component_transform_cache: HashMap::new()
     }
   }
 
@@ -180,9 +182,10 @@ impl ModelRenderer {
     Ok(())
   }
 
-  pub fn start_component_render(&mut self, transform: Option<ComponentTransform>) {
+  pub fn start_component_render(&mut self, transform: Option<ComponentTransform>, key: ComponentKey) {
     let transform_unwrapped = transform.unwrap_or(ComponentTransform::default());
     self.transform_queue.push(transform_unwrapped);
+    self.component_transform_cache.insert(key, self.transform_queue.get_transform_matrix());
   }
 
   pub fn end_component_render(&mut self) {
@@ -205,67 +208,59 @@ impl ModelRenderer {
     let mut global_rot = self.models.get(&model).unwrap().global_rot;
     let mut instance_vec = self.models.get(&model).unwrap().instances.clone();
     let mut needs_buf_update = false;
-    match transform.clone() {
-      ModelTransform::Single { transform_type, pos, rot } => {
-        if transform_type == TransformType::Global {
-          if global_pos != pos || global_rot != rot {
-            needs_buf_update = true;
-            global_pos = pos;
-            global_rot = rot;
-            instance_vec[0] = Instance {
-              position: pos.clone(),
-              rotation: rot.clone()
-            }
-          }
-        } else {
-          let transformed = self.transform_queue.transform_model(&transform);
-          match transformed {
-            ModelTransform::Single { transform_type: _, pos: pos_t, rot: rot_t } => {
-              if global_pos != pos_t || global_rot != rot_t {
-                needs_buf_update = true;
-                global_pos = pos_t;
-                global_rot = rot_t;
-                instance_vec[0] = Instance {
-                  position: pos_t.clone(),
-                  rotation: rot_t.clone()
-                }
-              }
-            }
-            _ => {}
-          }
-
+    if !transform.instanced {
+      let pos = transform.pos;
+      let rot = transform.rot;
+      if transform.transform_type == TransformType::Global {
+        if global_pos != pos || global_rot != rot {
+          needs_buf_update = true;
+          global_pos = pos;
+          global_rot = rot;
+          instance_vec[0] = Instance {
+            position: pos.clone(),
+            rotation: rot.clone()
+          };
+        }
+      } else {
+        let transformed = self.transform_queue.transform_model(&transform);
+        let pos_t = transformed.pos;
+        let rot_t = transformed.rot;
+        if global_pos != pos_t || global_rot != rot_t {
+          needs_buf_update = true;
+          global_pos = pos_t;
+          global_rot = rot_t;
+          instance_vec[0] = Instance {
+            position: pos_t.clone(),
+            rotation: rot_t.clone()
+          };
         }
       }
-      ModelTransform::Instanced { transform_type, instances } => {
-        if !instanced {
-          instanced = true;
-          needs_buf_update = true;
-        }
-        match transform_type {
-          TransformType::Global => {
-            for (idx, instance) in instances.iter().enumerate() {
-              if instance_vec[idx] != instance.clone() {
-                needs_buf_update = true;
-                break;
-              }
-            }
-            instance_vec = instances.clone()
-          },
-          TransformType::Local => {
-            let transformed = self.transform_queue.transform_model(&transform);
-            match transformed {
-              ModelTransform::Instanced { transform_type: _, instances: instances_t } => {
-                for (idx, instance) in instances_t.iter().enumerate() {
-                  if instance_vec[idx] != instance.clone() {
-                    needs_buf_update = true;
-                    break;
-                  }
-                }
-                instance_vec = instances_t.clone()
-              }
-              _ => {}
+    } else {
+      if !instanced {
+        instanced = true;
+        needs_buf_update = true;
+      }
+      let instances = transform.clone().instances;
+      match transform.transform_type {
+        TransformType::Global => {
+          for (idx, instance) in instances.iter().enumerate() {
+            if instance_vec[idx] != instance.clone() {
+              needs_buf_update = true;
+              break;
             }
           }
+          instance_vec = instances.clone();
+        },
+        TransformType::Local => {
+          let transformed = self.transform_queue.transform_model(&transform);
+          let instances_t = transformed.instances;
+          for (idx, instance) in instances_t.iter().enumerate() {
+            if instance_vec[idx] != instance.clone() {
+              needs_buf_update = true;
+              break;
+            }
+          }
+          instance_vec = instances_t.clone();
         }
       }
     }

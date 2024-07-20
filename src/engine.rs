@@ -11,5 +11,6 @@ mod test_child_component;
 mod state;
 mod events;
 mod util;
+mod collisions;
 
 pub use scene::Scene;

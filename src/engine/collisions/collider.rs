@@ -49,7 +49,7 @@ impl Collider {
     self.underlying.lock().unwrap().closest_boundary_pt(pt)
   }
 
-  pub fn colliding(&self, other: Collider) -> Option<Collision> {
+  pub fn collide(&self, other: &Collider) -> Option<Collision> {
     let center = self.underlying.lock().unwrap().center();
     let closest = other.closest_boundary_pt(center);
     if self.underlying.lock().unwrap().is_interior_point(closest) {

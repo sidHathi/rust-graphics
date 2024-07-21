@@ -1,15 +1,29 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{borrow::Borrow, collections::{HashMap, HashSet}, hash::Hash, ops::Index, sync::{Arc, Mutex, RwLock}};
 
 use cgmath::Matrix4;
 
-use crate::engine::{component::Component, component_store::ComponentKey, transform_queue::{apply_quaternion_transform, to_point, to_vec}, transforms::{ColliderTransform, ComponentTransform}, Scene};
+use crate::engine::{component::Component, component_store::ComponentKey, events::{Event, EventData, EventKey, EventManager}, transform_queue::{apply_quaternion_transform, to_point, to_vec}, transforms::{ColliderTransform, ComponentTransform}, Scene};
 
 use super::collider::{Collider, ColliderBoundary, Collision};
 use cgmath::Transform;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct IndexPair(u32, u32);
+
+impl Hash for IndexPair {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    let IndexPair(x, y) = *self;
+    let (min, max) = if x < y { (x, y) } else { (y, x) };
+    min.hash(state);
+    max.hash(state);
+  }
+}
+
 pub struct CollisionManager {
-  index_collider_map: HashMap<u32, Arc<Mutex<Collider>>>,
-  comp_collider_map: HashMap<ComponentKey, Vec<Arc<Mutex<Collider>>>>,
+  index_collider_map: HashMap<u32, Arc<RwLock<Collider>>>,
+  comp_collider_map: HashMap<ComponentKey, Vec<Arc<RwLock<Collider>>>>,
+  index_comp_map: HashMap<u32, ComponentKey>,
+  colliding_pairs: HashSet<IndexPair>,
   collisions: Vec<Collision>,
   next_key: u32,
 }
@@ -19,6 +33,8 @@ impl CollisionManager {
     Self {
       index_collider_map: HashMap::new(),
       comp_collider_map: HashMap::new(),
+      index_comp_map: HashMap::new(),
+      colliding_pairs: HashSet::new(),
       collisions: Vec::new(),
       next_key: 0
     }
@@ -29,25 +45,27 @@ impl CollisionManager {
     boundary: impl ColliderBoundary + 'static, 
     parent: ComponentKey,
     transform: Option<ColliderTransform>
-  ) -> Arc<Mutex<Collider>> {
+  ) -> Arc<RwLock<Collider>> {
     let collider_idx = self.next_key;
     self.next_key += 1;
 
     let collider = Collider::new(collider_idx, boundary, parent.clone(), transform);
-    let collider_rc = Arc::new(Mutex::new(collider));
+    let collider_rc = Arc::new(RwLock::new(collider));
     if !self.comp_collider_map.contains_key(&parent) {
       self.comp_collider_map.insert(parent.clone(), Vec::new());
     }
     self.comp_collider_map.get_mut(&parent).unwrap().push(collider_rc.clone());
     self.index_collider_map.insert(collider_idx, collider_rc.clone());
+    self.index_comp_map.insert(collider_idx, parent.clone());
     collider_rc
   }
 
-  pub fn remove_component_colliders(&mut self, comp: ComponentKey) -> Option<Vec<Arc<Mutex<Collider>>>> {
+  pub fn remove_component_colliders(&mut self, comp: ComponentKey) -> Option<Vec<Arc<RwLock<Collider>>>> {
     if let Some(colliders) = self.comp_collider_map.remove(&comp) {
       for col in colliders.iter() {
-        let idx = col.lock().unwrap().index;
+        let idx = col.read().unwrap().index;
         self.index_collider_map.remove(&idx);
+        self.index_comp_map.remove(&idx);
       }
       return Some(colliders)
     }
@@ -59,7 +77,7 @@ impl CollisionManager {
       if position_cache.contains_key(key) {
         let mat = position_cache.get(key).unwrap();
         for collider in colliders {
-          let mut mutex_guard = collider.lock().unwrap();
+          let mut mutex_guard = collider.write().unwrap();
           let curr_transform = mutex_guard.transform.clone();
           let new_pos = to_vec(mat.transform_point(to_point(curr_transform.relative_pos)));
           let new_rot = apply_quaternion_transform(mat, curr_transform.relative_rot);
@@ -70,7 +88,84 @@ impl CollisionManager {
     }
   }
 
-  pub fn trigger_collision_events(&self, scene: &mut Scene) {
-    
+  pub fn trigger_collision_events(&mut self, event_manager: &mut EventManager) {
+    let mut collisions: HashMap<IndexPair, Collision> = HashMap::new();
+    for (key_i, collider_i) in self.index_collider_map.iter() {
+      for (key_j, collider_j) in self.index_collider_map.iter() {
+        if key_i == key_j {
+          continue;
+        }
+
+        let pot_collision = collider_i.read().unwrap().collide(&collider_j.read().unwrap());
+        let index_pair = IndexPair(key_i.clone(), key_j.clone());
+        if let Some(collision) = pot_collision {
+          if !collisions.contains_key(&index_pair) {
+            collisions.insert(index_pair, collision);
+          }
+        }
+      }
+    }
+
+    // for each collision -> want to trigger an event for each pair of colliders that are intersecting with the detected collision
+    // this event is registered for each pair of components involved in the collision -> this means we need to know which collider index corresponds with which component on registration
+    // want to know which collisions are already ongoing, and which ongoing collisions are no longer happening
+    let mut new_colliding_pairs: HashSet<IndexPair> = HashSet::new();
+    for (index_pair, collision) in collisions {
+      if let Some(c1) = self.index_comp_map.get(&index_pair.0) {
+        if let Some(c2) = self.index_comp_map.get(&index_pair.1) {
+          let co_event_data = EventData::CollisionOngoingEvent { 
+            c1: c1.clone(), 
+            c2: c2.clone(), 
+            collision: collision.clone()
+          };
+          event_manager.handle_event(Event {
+            key: EventKey::CollisionOngoingEvent,
+            data: co_event_data
+          });
+          new_colliding_pairs.insert(index_pair.clone());
+          if !self.colliding_pairs.contains(&index_pair) {
+            let cs_event_data = EventData::CollisionStartEvent { 
+              c1: c1.clone(), 
+              c2: c2.clone(), 
+              collision: collision.clone()
+            };
+            event_manager.handle_event(Event {
+              key: EventKey::CollisionStartEvent,
+              data: cs_event_data
+            });
+          }
+        }
+      }
+    }
+
+    for index_pair in self.colliding_pairs.iter() {
+      if !new_colliding_pairs.contains(&index_pair) {
+        if !self.index_comp_map.contains_key(&index_pair.0) || !self.index_comp_map.contains_key(&index_pair.1) {
+          continue;
+        }
+
+        let c1 = self.index_comp_map.get(&index_pair.0).unwrap().clone();
+        let c2 = self.index_comp_map.get(&index_pair.1).unwrap().clone();
+        let collider_keys = (index_pair.0, index_pair.1);
+        let ce_event_data = EventData::CollisionEndEvent { c1, c2, collider_keys };
+        event_manager.handle_event(Event {
+          key: EventKey::CollisionEndEvent,
+          data: ce_event_data
+        });
+      }
+    }
+
+    self.colliding_pairs = new_colliding_pairs;
   }
+}
+
+
+pub fn try_collide(col1: &Arc<RwLock<Collider>>, col2: &Arc<RwLock<Collider>>) -> Option<Collision> {
+  let col1_unwrapped = col1.read().unwrap();
+  let col2_unwrapped = col2.read().unwrap();
+
+  if let Some(collision) = col1_unwrapped.collide(&col2_unwrapped) {
+    return Some(collision)
+  }
+  None
 }

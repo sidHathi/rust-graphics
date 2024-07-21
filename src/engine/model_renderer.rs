@@ -317,4 +317,8 @@ impl ModelRenderer {
       .into_iter()
       .collect::<Vec<(&Model, &wgpu::Buffer)>>()
   }
+
+  pub fn get_position_cache(&self) -> &HashMap<ComponentKey, Matrix4<f32>> {
+    &self.component_transform_cache
+  }
 }

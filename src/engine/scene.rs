@@ -6,7 +6,7 @@ use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
 
-use super::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, events::{Event, EventManager}, model_renderer::{ModelRenderer, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, events::{Event, EventManager}, model_renderer::{ModelRenderer, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
 
 // initial goal -> render a single component with a model
 // scene should essentially be akin to state from tutorial with a few additions
@@ -39,7 +39,8 @@ pub struct Scene {
   render_pipeline: wgpu::RenderPipeline,
   pub app: Option<Component>,
   pub app_state: Store,
-  pub event_manager: EventManager
+  pub event_manager: EventManager,
+  pub collision_manager: CollisionManager,
 }
 
 impl Scene {
@@ -275,6 +276,7 @@ impl Scene {
     let mut components = ComponentStore::new();
     let app_state = create_app_state();
     let event_manager = EventManager::new();
+    let collision_manager = CollisionManager::new();
 
     let mut scene = Self {
       window,
@@ -304,7 +306,8 @@ impl Scene {
       clear_color: (0.1, 0.2, 0.3, 1.),
       app: None,
       app_state,
-      event_manager
+      event_manager,
+      collision_manager
     };
 
     println!("Scene initialized");
@@ -399,6 +402,8 @@ impl Scene {
       println!("No app found");
       return Ok(());
     }
+    self.collision_manager.update_collider_positions(self.model_renderer.get_position_cache());
+    self.collision_manager.trigger_collision_events(&mut self.event_manager);
 
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());

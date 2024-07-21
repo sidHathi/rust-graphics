@@ -1,7 +1,7 @@
 use cgmath::{Point3, Vector3};
 use winit::event::{KeyboardInput, WindowEvent};
 
-use crate::engine::{component_store::ComponentKey, errors::EngineError, Scene};
+use crate::engine::{collisions::Collision, component_store::ComponentKey, errors::EngineError, Scene};
 
 use super::component_event::ComponentEvent;
 
@@ -16,7 +16,9 @@ pub enum EventKey {
   KeyboardEvent,
   MouseRaycastEvent,
   ComponentEvent,
-  CollisionEvent,
+  CollisionOngoingEvent,
+  CollisionStartEvent,
+  CollisionEndEvent,
   CustomEvent,
 }
 
@@ -28,10 +30,20 @@ pub enum EventData {
     dir: Vector3<f32>
   },
   ComponentEvent (ComponentEvent),
-  CollisionEvent {
+  CollisionOngoingEvent {
     c1: ComponentKey,
     c2: ComponentKey,
-    loc: Point3<f32>
+    collision: Collision
+  },
+  CollisionStartEvent {
+    c1: ComponentKey,
+    c2: ComponentKey,
+    collision: Collision
+  },
+  CollisionEndEvent {
+    c1: ComponentKey,
+    c2: ComponentKey,
+    collider_keys: (u32, u32)
   },
   CustomEvent (String)
 }

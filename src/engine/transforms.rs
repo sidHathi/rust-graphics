@@ -10,10 +10,10 @@ pub enum TransformType {
   Local
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct GlobalTransform {
-  pos: Vector3<f32>,
-  rot: Quaternion<f32>
+  pub pos: Vector3<f32>,
+  pub rot: Quaternion<f32>
 }
 
 pub use component_transform::ComponentTransform;

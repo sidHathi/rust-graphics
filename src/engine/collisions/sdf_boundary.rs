@@ -4,10 +4,9 @@ use crate::{engine::transforms::ComponentTransform, sdf::SdfShape};
 
 use super::collider::ColliderBoundary;
 
-struct SdfBoundary {
-  center: Point3<f32>,
-  transform: ComponentTransform,
-  sdf: SdfShape
+pub struct SdfBoundary {
+  pub center: Point3<f32>,
+  pub sdf: SdfShape
 }
 
 impl ColliderBoundary for SdfBoundary {
@@ -18,6 +17,7 @@ impl ColliderBoundary for SdfBoundary {
   }
 
   fn is_interior_point(&self, pt: Point3<f32>) -> bool {
+    // println!("Checking interior point {:?}, center: {:?} -> dist = {}", pt, self.center, self.sdf.dist(pt));
     self.sdf.dist(pt) <= 0.
   }
 
@@ -31,5 +31,14 @@ impl ColliderBoundary for SdfBoundary {
       return Some(self.sdf.compute_normal(pt))
     }
     None
+  }
+}
+
+impl SdfBoundary {
+  pub fn new(center: Point3<f32>, sdf: SdfShape) -> SdfBoundary {
+    Self {
+      center,
+      sdf
+    }
   }
 }

@@ -41,7 +41,17 @@ impl ColliderTransform {
     self.cached_global_rot = None;
   }
 
-  pub fn update_pos(&mut self, pos: Vector3<f32>, rot: Quaternion<f32>) {
+  pub fn update_pos(&mut self, pos: Vector3<f32>) {
+    self.relative_pos = pos;
+    self.invalidate_cache();
+  }
+
+  pub fn update_rot(&mut self, rot: Quaternion<f32>) {
+    self.relative_rot = rot;
+    self.invalidate_cache();
+  }
+
+  pub fn update_transform(&mut self, pos: Vector3<f32>, rot: Quaternion<f32>) {
     self.relative_pos = pos;
     self.relative_rot = rot;
     self.invalidate_cache();
@@ -65,5 +75,14 @@ impl ColliderTransform {
       cached_global_pos: None,
       cached_global_rot: None
     }
+  }
+
+  pub fn to_coord_matrix(&self) -> Matrix4<f32> {
+    let rot = self.cached_global_rot.unwrap_or(self.relative_rot);
+    let pos = self.cached_global_pos.unwrap_or(self.relative_pos);
+    let rotation_mat = Matrix4::from(rot);
+    let translation_mat = Matrix4::from_translation(pos);
+    let combined = translation_mat * rotation_mat;
+    combined
   }
 }

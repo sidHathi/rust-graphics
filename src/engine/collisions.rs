@@ -4,3 +4,4 @@ mod collision_manager;
 
 pub use collider::{Collider, Collision, ColliderBoundary};
 pub use collision_manager::CollisionManager;
+pub use sdf_boundary::SdfBoundary;

@@ -3,7 +3,7 @@ use std::{any, borrow::Borrow, collections::{hash_map::{Iter, IterMut}, HashMap}
 use super::{async_closure::run_component_closure, component::{self, Component}, errors::EngineError};
 
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub struct ComponentKey {
   pub index: u32,
 }

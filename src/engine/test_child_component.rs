@@ -1,7 +1,9 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
-use super::{component::{Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, transforms::ModelTransform, util::random_quaternion, Scene};
-use cgmath::{Point3, Quaternion};
+use crate::sdf::{CubeSdf, SdfShape, Shape};
+
+use super::{collisions::{Collider, SdfBoundary}, component::{Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, transforms::ModelTransform, util::random_quaternion, Scene};
+use cgmath::{Point3, Quaternion, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput};
 
@@ -12,6 +14,7 @@ pub struct TestChildComponent {
   model: Option<RenderableModel>,
   active: bool,
   should_set_state: bool,
+  collider: Option<Arc<RwLock<Collider>>>,
 }
 
 #[async_trait(?Send)]
@@ -32,6 +35,10 @@ impl ComponentFunctions for TestChildComponent {
       self.model = None;
     }
 
+    let collision_sdf = SdfShape::new(Shape::Cube { center: Point3::new(0., 0., 0.), half_bounds:  Vector3::new(20., 20., 20.)}, CubeSdf);
+    let collision_boundary = SdfBoundary::new(Point3::new(0., 0., 0.), collision_sdf);
+    self.collider = Some(scene.collision_manager.add_component_collider(collision_boundary, key, None));
+
     let _ = self.add_event_listener(scene, &key, &EventKey::KeyboardEvent);
   }
 
@@ -50,6 +57,7 @@ impl ComponentFunctions for TestChildComponent {
       // println!("No model to render");
       return Ok(());
     }
+
     scene.render_model(&self.model.as_ref().unwrap(), ModelTransform::default())
   }
 }
@@ -63,6 +71,7 @@ impl TestChildComponent {
       local_position: Point3 { x: 0., y: 0., z: 0. },
       active: false,
       should_set_state: false,
+      collider: None,
     }
   }
 }

@@ -101,6 +101,7 @@ impl CollisionManager {
         if let Some(collision) = pot_collision {
           if !collisions.contains_key(&index_pair) {
             collisions.insert(index_pair, collision);
+            // println!("Collision detected: {:?} -> comp 1: {:?}, comp2: {:?}", collision.clone(), self.index_collider_map.get(&collision.colliders.0).unwrap().read().unwrap().parent, self.index_collider_map.get(&collision.colliders.1).unwrap().read().unwrap().parent);
           }
         }
       }
@@ -113,6 +114,10 @@ impl CollisionManager {
     for (index_pair, collision) in collisions {
       if let Some(c1) = self.index_comp_map.get(&index_pair.0) {
         if let Some(c2) = self.index_comp_map.get(&index_pair.1) {
+          if c1 == c2 {
+            continue;
+          }
+
           let co_event_data = EventData::CollisionOngoingEvent { 
             c1: c1.clone(), 
             c2: c2.clone(), 

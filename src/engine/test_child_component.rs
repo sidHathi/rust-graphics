@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, SdfBoundary}, component::{Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, transforms::ModelTransform, util::random_quaternion, Scene};
+use super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, test_component::TestComponent, transforms::ModelTransform, util::random_quaternion, Scene};
 use cgmath::{Point3, Quaternion, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput};
@@ -15,6 +15,7 @@ pub struct TestChildComponent {
   active: bool,
   should_set_state: bool,
   collider: Option<Arc<RwLock<Collider>>>,
+  mem: Option<Arc<Mutex<Self>>>
 }
 
 #[async_trait(?Send)]
@@ -23,7 +24,7 @@ impl ComponentFunctions for TestChildComponent {
     &mut self,
     scene: &mut Scene,
     key: ComponentKey,
-    parent: Option<ComponentKey>
+    parent: Option<ComponentKey>,
   ) {
     self.key = key;
     self.active = true;
@@ -63,8 +64,8 @@ impl ComponentFunctions for TestChildComponent {
 }
 
 impl TestChildComponent {
-  pub fn new() -> TestChildComponent {
-    Self {
+  pub fn new() -> Arc<Mutex<Self>> {
+    let new_self = Self {
       key: ComponentKey::zero(),
       parent: None,
       model: None,
@@ -72,7 +73,11 @@ impl TestChildComponent {
       active: false,
       should_set_state: false,
       collider: None,
-    }
+      mem: None
+    };
+    let mem = Arc::new(Mutex::new(new_self));
+    mem.lock().unwrap().mem = Some(mem.clone());
+    mem
   }
 }
 
@@ -90,6 +95,12 @@ impl EventListener for TestChildComponent {
         },
         _ => {}
       }
+  }
+}
+
+impl AsyncCallbackHandler<i32> for TestChildComponent {
+  fn handle_async_res(&mut self, data: i32) -> () {
+    println!("received data: {}", data);
   }
 }
 

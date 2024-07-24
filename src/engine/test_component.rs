@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
@@ -19,6 +19,7 @@ pub struct TestComponent {
   child_pos: ComponentTransform,
   collider: Option<Arc<RwLock<Collider>>>,
   active: bool,
+  mem: Option<Arc<Mutex<Self>>>
 }
 
 #[async_trait(?Send)]
@@ -27,7 +28,7 @@ impl ComponentFunctions for TestComponent {
     &mut self,
     scene: &mut Scene,
     key: ComponentKey,
-    parent: Option<ComponentKey>
+    parent: Option<ComponentKey>,
   ) {
     self.key = key;
     self.active = true;
@@ -128,8 +129,8 @@ impl StateListener for TestComponent {
 }
 
 impl TestComponent {
-  pub fn new() -> TestComponent {
-    Self {
+  pub fn new() -> Arc<Mutex<Self>> {
+    let new_self = Self {
       key: ComponentKey::zero(),
       parent: None,
       model: None,
@@ -138,8 +139,12 @@ impl TestComponent {
       active: false,
       child_pos: ComponentTransform::default(),
       model_pos: None,
-      collider: None
-    }
+      collider: None,
+      mem: None,
+    };
+    let mem = Arc::new(Mutex::new(new_self));
+    mem.lock().unwrap().mem = Some(mem.clone());
+    mem
   }
 
   pub fn handle_new_rotation_state(&mut self, new_state: &State) {

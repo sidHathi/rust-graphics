@@ -1,14 +1,15 @@
-use std::{any::Any, ops::Deref, rc::Rc, sync::{Arc, Mutex, MutexGuard}};
+use std::{any::Any, future::Future, ops::Deref, rc::Rc, sync::{Arc, Mutex, MutexGuard}};
 
 use cgmath::Point3;
+use tokio::runtime::Runtime;
 
 use crate::graphics::{DrawModel, Model};
 
-use super::{component_store::ComponentKey, errors::EngineError, events::EventListener, model_renderer::ModelRenderer, state::StateListener, transforms::ComponentTransform, Scene};
+use super::{component_store::ComponentKey, errors::EngineError, events::{Event, EventKey, EventListener}, model_renderer::ModelRenderer, state::StateListener, transforms::ComponentTransform, Scene};
 use async_trait::async_trait;
 
 #[async_trait(?Send)]
-pub trait ComponentFunctions: Any + Send + EventListener + StateListener {
+pub trait ComponentFunctions: Any + Send + Sync + EventListener + StateListener {
   // initialize the component
   async fn init(
     &mut self,
@@ -28,21 +29,25 @@ pub trait ComponentFunctions: Any + Send + EventListener + StateListener {
   }
 }
 
+pub trait AsyncCallbackHandler<T>: ComponentFunctions + Any {
+  fn handle_async_res(&mut self, data: T) -> ();
+}
+
 #[derive(Clone)]
 pub struct Component {
   pub key: ComponentKey,
-  underlying: Arc<Mutex<Box<dyn ComponentFunctions>>>,
+  underlying: Arc<Mutex<dyn ComponentFunctions>>,
 }
 
 impl Component {
-  pub async fn new(
-    underlying: impl ComponentFunctions + 'static,
+  pub async fn new<T: ComponentFunctions>(
+    underlying: Arc<Mutex<T>>,
     scene: &mut Scene,
     parent: Option<ComponentKey>
   ) -> Option<Component> {
     let mut component = Self {
       key: ComponentKey::zero(),
-      underlying: Arc::new(Mutex::new(Box::new(underlying)))
+      underlying: underlying as Arc<Mutex<dyn ComponentFunctions + 'static>>
     };
     let key_res = scene.components.insert(component.clone());
     if let Ok(key) = key_res {
@@ -54,7 +59,7 @@ impl Component {
   }
 
   pub async fn init(
-    &mut self, 
+    &mut self,
     scene: &mut Scene,
     key: ComponentKey,
     parent: Option<ComponentKey>,
@@ -71,6 +76,44 @@ impl Component {
     let res = self.underlying.lock().unwrap().render(scene);
     scene.model_renderer.end_component_render();
     res
+  }
+
+  pub fn exec_async_unsafe<Args, Out, F, Fut>(underlying: Arc<Mutex<Box<dyn ComponentFunctions>>>, func: F, args: Args)
+  where
+    F: FnOnce(Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>>, Args) -> Fut + Send + 'static,
+    Fut: Future<Output = Out> + Send + 'static,
+    Args: Send + Sync + 'static,
+    Out: Send + Sync + 'static {
+    let raw = Arc::into_raw(underlying) as *const Mutex<Box<dyn AsyncCallbackHandler<Out>>>;
+    let unsafe_casted: Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>> = unsafe { Arc::from_raw(raw) };
+
+    // in new thread:
+    let comp_mutex = unsafe_casted.clone();
+    std::thread::spawn(move || {
+      let rt = Runtime::new().unwrap();
+      let out = rt.block_on(async {
+        (func)(unsafe_casted, args).await
+      });
+      comp_mutex.lock().unwrap().handle_async_res(out);
+    });
+  }
+
+  pub fn exec_async<Args, Out, F, Fut>(underlying: Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>>, func: F, args: Args)
+  where
+    F: FnOnce(Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>>, Args) -> Fut + Send + 'static,
+    Fut: Future<Output = Out> + Send + 'static,
+    Args: Send + Sync + 'static,
+    Out: Send + Sync + 'static
+  {
+    // in new thread
+    let comp_mutex = underlying.clone();
+    std::thread::spawn(move || {
+      let rt = Runtime::new().unwrap();
+      let out = rt.block_on(async {
+        (func)(underlying, args).await
+      });
+      comp_mutex.lock().unwrap().handle_async_res(out);
+    });
   }
 }
 

@@ -4,7 +4,7 @@
 
 ### Summary
 
-This repo contains a component based graphics engine implemented using Rust and webgpu. The bulk of the engine is implemented in the [engine](src/engine). The Key classes are `component.rs` where I define the underlying data structure used to contain and render each graphical component and `scene.rs` which manages drawing and updating the wgpu scene. 
+This repo contains a component based graphics engine implemented using Rust and webgpu. The bulk of the engine is implemented in the [engine](src/engine). The key files are `component.rs` ([here](src/engine/component.rs)) where I define the underlying data structure used to contain and render each graphical component and `scene.rs`([here](src/engine/scene.rs)) which manages drawing and updating the wgpu scene. 
 
 ### Features of note:
 

@@ -6,11 +6,11 @@ use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
 
-use super::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, model_renderer::{ModelRenderer, RenderableModel}, test_component::TestComponent};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, events::{Event, EventManager}, model_renderer::{ModelRenderer, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
 
-// initial goal -> render a single component with a model
-// scene should essentially be akin to state from tutorial with a few additions
-// i.e. it manages the overarching render and update for all child components
+// The Scene struct contains the data needed to render the wgpu scene
+// It manages the camera, lighting and i/o. It also handles the operation
+// of any and all Components within the scene
 pub struct Scene {
   window: Window,
   pub size: winit::dpi::PhysicalSize<u32>,
@@ -37,7 +37,10 @@ pub struct Scene {
   pub model_renderer: ModelRenderer,
   render_pipeline_layout: wgpu::PipelineLayout,
   render_pipeline: wgpu::RenderPipeline,
-  pub app: Option<Component>
+  pub app: Option<Component>, // top level component
+  pub app_state: Store, // state manager
+  pub event_manager: EventManager, // event manager
+  pub collision_manager: CollisionManager, // collision manager
 }
 
 impl Scene {
@@ -268,9 +271,12 @@ impl Scene {
       )
     };
 
-    // model store
+    // model store, component store, state, events, collisions, initialized here
     let model_renderer = ModelRenderer::new();
     let mut components = ComponentStore::new();
+    let app_state = create_app_state();
+    let event_manager = EventManager::new();
+    let collision_manager = CollisionManager::new();
 
     let mut scene = Self {
       window,
@@ -298,9 +304,14 @@ impl Scene {
       render_pipeline_layout,
       mouse_pressed: false,
       clear_color: (0.1, 0.2, 0.3, 1.),
-      app: None
+      app: None,
+      app_state,
+      event_manager,
+      collision_manager
     };
 
+    println!("Scene initialized");
+    // The main app component gets initialized here
     let underlying = TestComponent::new();
     let app = Component::new(
       underlying,
@@ -308,6 +319,7 @@ impl Scene {
       None,
     ).await;
     scene.app = app;
+    println!("App initialized");
 
     scene
   }
@@ -337,7 +349,10 @@ impl Scene {
               ..
             },
         ..
-      } => self.camera_controller.process_keyboard(*key, *state),
+      } => {
+        self.event_manager.handle_event(Event::from(event).unwrap());
+        self.camera_controller.process_keyboard(*key, *state)
+      },
       WindowEvent::MouseWheel { delta, .. } => {
         self.camera_controller.process_scroll(delta);
         true
@@ -355,6 +370,15 @@ impl Scene {
   }
 
   pub fn update(&mut self, dt: instant::Duration) {
+    // trigger any event callbacks:
+    self.event_manager.trigger_callbacks(&mut self.components);
+    let _ = self.app_state.trigger_callbacks(&mut self.components);
+
+    let comp_clones: Vec<_> = self.components.iter().map(|(_, comp)| comp.clone()).collect();
+    for comp in comp_clones.iter() {
+      comp.update(self, dt);
+    }
+
     // should also call component updates
     self.camera_controller.update_camera(&mut self.camera, dt);
     self.camera_uniform.update_view_proj(&self.camera, &self.projection);
@@ -371,12 +395,15 @@ impl Scene {
   pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
     // mark models to be rendered
     if let Some(app) = self.app.clone() {
-      if let Err(err) = app.render(self) {
+      if let Err(err) = app.render(self, None) {
         println!("render failed with err {}", err);
       }
     } else {
+      println!("No app found");
       return Ok(());
     }
+    self.collision_manager.update_collider_positions(self.model_renderer.get_position_cache());
+    self.collision_manager.trigger_collision_events(&mut self.event_manager);
 
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -419,6 +446,7 @@ impl Scene {
 
       render_pass.set_pipeline(&self.render_pipeline);
       for model_tuple in self.model_renderer.get_rendering_models() {
+        // println!("Rendering model: {:?}, {:?}", &model_tuple.0, &model_tuple.1);
         render_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
         render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
       }
@@ -441,8 +469,9 @@ impl Scene {
     }
   }
 
-  pub fn render_model(&mut self, model: &RenderableModel) -> Result<(), EngineError> {
+  pub fn render_model(&mut self, model: &RenderableModel, transform: ModelTransform) -> Result<(), EngineError> {
     // needs to position/rotate the model appropriately too
-    self.model_renderer.render(model)
+    self.model_renderer.render(model, transform, &self.queue, &self.device)
+    // self.model_renderer.render_from_cache(model)
   }
 }

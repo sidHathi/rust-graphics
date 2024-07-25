@@ -1,5 +1,7 @@
+use std::cmp::max;
+
 use cgmath::{
-  InnerSpace, Point3, Vector3
+  num_traits::abs, InnerSpace, MetricSpace, Point3, Vector2, Vector3
 };
 
 const EPSILON: f32 = 1e4;
@@ -32,6 +34,50 @@ pub enum Shape {
     rad_b: f32,
   },
   Custom(Vec<f32>),
+}
+
+pub fn SphereSdf(shape: &Shape, point: Point3<f32>) -> f32 {
+  match shape {
+    Shape::Sphere { center, rad } => {
+      point.distance(center.clone()) - rad
+    }
+    _ => 0.
+  }
+}
+
+pub fn CubeSdf(shape: &Shape, p: Point3<f32>) -> f32 {
+  match shape {
+    Shape::Cube { center, half_bounds } => {
+      let mut d = 0.;
+      if abs(p.x) < half_bounds.x && abs(p.y) < half_bounds.y && abs(p.z) < half_bounds.z {
+          return f32::max(f32::max(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y) as f32, abs(p.z) - half_bounds.z as f32);
+      } else if (abs(p.x) < half_bounds.x) {
+          if (abs(p.y) < half_bounds.y) {
+              d = abs(p.z) - half_bounds.z;
+          } else {
+              if (abs(p.z) < half_bounds.z) {
+                  d = abs(p.y) - half_bounds.y;
+              } else {
+                  d = (Vector2::new(abs(p.y) - half_bounds.y, abs(p.z) - half_bounds.z)).magnitude();
+              }
+          }
+      } else if (abs(p.y) <= half_bounds.y) {
+          if (abs(p.z) <= half_bounds.z) {
+              d = abs(p.x) - half_bounds.x;
+          } else {
+              d = Vector2::new(abs(p.x) - half_bounds.x, abs(p.z) - half_bounds.z).magnitude();
+          }
+      } else {
+          if (abs(p.z) <= half_bounds.z) {
+              d = Vector2::new(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y).magnitude();
+          } else {
+              d = Vector3::new(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y, abs(p.z) - half_bounds.z).magnitude();
+          }
+      }
+      d
+    }
+    _ => 0.
+  }
 }
 
 #[derive(Clone)]

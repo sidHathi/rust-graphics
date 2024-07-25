@@ -98,9 +98,9 @@ impl Component {
     });
   }
 
-  pub fn exec_async<Args, Out, F, Fut>(underlying: Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>>, func: F, args: Args)
+  pub fn exec_async<CType: AsyncCallbackHandler<Out>, Args, Out, F, Fut>(underlying: Arc<Mutex<Box<CType>>>, func: F, args: Args)
   where
-    F: FnOnce(Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>>, Args) -> Fut + Send + 'static,
+    F: FnOnce(Arc<Mutex<Box<CType>>>, Args) -> Fut + Send + 'static,
     Fut: Future<Output = Out> + Send + 'static,
     Args: Send + Sync + 'static,
     Out: Send + Sync + 'static

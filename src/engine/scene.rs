@@ -8,9 +8,9 @@ use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pi
 
 use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, events::{Event, EventManager}, model_renderer::{ModelRenderer, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
 
-// initial goal -> render a single component with a model
-// scene should essentially be akin to state from tutorial with a few additions
-// i.e. it manages the overarching render and update for all child components
+// The Scene struct contains the data needed to render the wgpu scene
+// It manages the camera, lighting and i/o. It also handles the operation
+// of any and all Components within the scene
 pub struct Scene {
   window: Window,
   pub size: winit::dpi::PhysicalSize<u32>,
@@ -37,10 +37,10 @@ pub struct Scene {
   pub model_renderer: ModelRenderer,
   render_pipeline_layout: wgpu::PipelineLayout,
   render_pipeline: wgpu::RenderPipeline,
-  pub app: Option<Component>,
-  pub app_state: Store,
-  pub event_manager: EventManager,
-  pub collision_manager: CollisionManager,
+  pub app: Option<Component>, // top level component
+  pub app_state: Store, // state manager
+  pub event_manager: EventManager, // event manager
+  pub collision_manager: CollisionManager, // collision manager
 }
 
 impl Scene {
@@ -271,7 +271,7 @@ impl Scene {
       )
     };
 
-    // model store
+    // model store, component store, state, events, collisions, initialized here
     let model_renderer = ModelRenderer::new();
     let mut components = ComponentStore::new();
     let app_state = create_app_state();
@@ -311,7 +311,7 @@ impl Scene {
     };
 
     println!("Scene initialized");
-
+    // The main app component gets initialized here
     let underlying = TestComponent::new();
     let app = Component::new(
       underlying,

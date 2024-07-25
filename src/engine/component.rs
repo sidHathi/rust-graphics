@@ -33,13 +33,18 @@ pub trait AsyncCallbackHandler<T>: ComponentFunctions + Any {
   fn handle_async_res(&mut self, data: T) -> ();
 }
 
+// Sized wrapper for a ComponentFunctions implementing struct
+// Allows multiple mutable access and storage within the scene
 #[derive(Clone)]
 pub struct Component {
-  pub key: ComponentKey,
+  pub key: ComponentKey, // key used to access the component in the scenes Component map
   underlying: Arc<Mutex<dyn ComponentFunctions>>,
 }
 
 impl Component {
+  // Takes in an arc mutex pointer to a ComponentFunctions implementing struct,
+  // creates a new Component wrapper for the struct, initializes it, and adds
+  // it to the scene
   pub async fn new<T: ComponentFunctions>(
     underlying: Arc<Mutex<T>>,
     scene: &mut Scene,
@@ -58,6 +63,7 @@ impl Component {
     None
   }
 
+  // initialize the underlying component
   pub async fn init(
     &mut self,
     scene: &mut Scene,
@@ -67,10 +73,12 @@ impl Component {
     self.underlying.lock().unwrap().init(scene, key, parent).await;
   }
 
+  // update the underlying component
   pub fn update(&self, scene: &mut Scene, dt: instant::Duration) {
     self.underlying.lock().unwrap().update(scene, dt);
   }
 
+  // render the component
   pub fn render(&self, scene: &mut Scene, transform: Option<ComponentTransform>) -> Result<(), EngineError> {
     scene.model_renderer.start_component_render(transform, self.key);
     let res = self.underlying.lock().unwrap().render(scene);
@@ -78,6 +86,8 @@ impl Component {
     res
   }
 
+  // used to execute async code which requires mutable access to a component
+  // outside of the component itself (this is an unsafe operation)
   pub fn exec_async_unsafe<Args, Out, F, Fut>(underlying: Arc<Mutex<Box<dyn ComponentFunctions>>>, func: F, args: Args)
   where
     F: FnOnce(Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>>, Args) -> Fut + Send + 'static,
@@ -98,6 +108,7 @@ impl Component {
     });
   }
 
+  // used to execute async code that mutates a component within the component itself
   pub fn exec_async<CType: AsyncCallbackHandler<Out>, Args, Out, F, Fut>(underlying: Arc<Mutex<Box<CType>>>, func: F, args: Args)
   where
     F: FnOnce(Arc<Mutex<Box<CType>>>, Args) -> Fut + Send + 'static,
@@ -117,6 +128,7 @@ impl Component {
   }
 }
 
+// event listener and state listener are delegated to underlying
 impl EventListener for Component {
   fn handle_event(&mut self, event: super::events::Event) {
     // Check if the trait object also implements AnotherTrait

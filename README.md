@@ -13,6 +13,7 @@ This repo contains a component based graphics engine implemented using Rust and 
 * The engine supports shared global state. The user defines the state for their app in the `app_state.rs` function and `store.rs` implements a state store which supports retreival, updates, and adding listener callbacks for specific state changes. Any struct that implements the `ComponentFunctions` trait can listen for these state changes by implementing the `StateListener` trait
 * The engine supports global event handling. Events are triggered through the scene's `EventManager` which triggers event listeners across all components listening for those specific events. Events include I/O events managed by the scene, and custom events created by the user.
 * Once a struct implements the `ComponentFunctions` trait, it can be added to the scene by its parent by creating a new `Component` struct (initialized using an `Arc<Mutex<dyn ComponentFunctions>>`) using the `Component::new` function.
+* Components can add colliders to themselves (bounded using signed distance functions), and the `CollisionManager` will detect any collisions that occur and instigate `CollisionEvents` within the event manager when appropriate
 * The app support threaded execution of async code that mutates individual components
 * The scene only renders one Component, which generates the scene using models and children
 

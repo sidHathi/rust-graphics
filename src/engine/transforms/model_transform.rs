@@ -1,8 +1,8 @@
-use cgmath::{Matrix, Matrix4, Quaternion, Vector3};
+use cgmath::{Matrix, Matrix4, Quaternion, Rad, Rotation3, Vector3};
 use crate::graphics::Instance;
 use super::TransformType;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct ModelTransform {
   pub transform_type: TransformType,
   pub pos: Vector3<f32>,
@@ -59,6 +59,27 @@ impl ModelTransform {
 
   pub fn get_rot(&self) -> Quaternion<f32> {
     self.rot
+  }
+
+  pub fn set_rot(&mut self, new_rot: Quaternion<f32>) {
+    self.rot = new_rot;
+    if self.instances.len() > 0 {
+      self.instances[0].rotation = new_rot;
+    }
+  }
+
+  pub fn set_pos(&mut self, new_rot: Vector3<f32>) {
+    self.pos = new_rot;
+    if self.instances.len() > 0 {
+      self.instances[0].position = new_rot;
+    }
+  }
+
+  pub fn apply_rot(&mut self, axis: Vector3<f32>, angle: Rad<f32>) {
+    self.rot = self.rot * Quaternion::from_axis_angle(axis, angle);
+    if self.instances.len() > 0 {
+      self.instances[0].rotation = self.rot;
+    }
   }
 
   pub fn default() -> ModelTransform {

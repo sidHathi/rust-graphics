@@ -4,7 +4,7 @@ mod component_transform;
 mod model_transform;
 mod collider_transform;
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum TransformType {
   Global,
   Local

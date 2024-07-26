@@ -86,32 +86,32 @@ impl Component {
     res
   }
 
-  // used to execute async code which requires mutable access to a component
-  // outside of the component itself (this is an unsafe operation)
-  pub fn exec_async_unsafe<Args, Out, F, Fut>(underlying: Arc<Mutex<Box<dyn ComponentFunctions>>>, func: F, args: Args)
-  where
-    F: FnOnce(Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>>, Args) -> Fut + Send + 'static,
-    Fut: Future<Output = Out> + Send + 'static,
-    Args: Send + Sync + 'static,
-    Out: Send + Sync + 'static {
-    let raw = Arc::into_raw(underlying) as *const Mutex<Box<dyn AsyncCallbackHandler<Out>>>;
-    let unsafe_casted: Arc<Mutex<Box<dyn AsyncCallbackHandler<Out>>>> = unsafe { Arc::from_raw(raw) };
+  // // used to execute async code which requires mutable access to a component
+  // // outside of the component itself (this is an unsafe operation)
+  // pub fn exec_async_unsafe<Args, Out, F, Fut>(underlying: Arc<Mutex<dyn ComponentFunctions>>, func: F, args: Args)
+  // where
+  //   F: FnOnce(Arc<Mutex<dyn AsyncCallbackHandler<Out>>>, Args) -> Fut + Send + 'static,
+  //   Fut: Future<Output = Out> + Send + 'static,
+  //   Args: Send + Sync + 'static,
+  //   Out: Send + Sync + 'static {
+  //   let raw = Arc::into_raw(underlying) as *const Mutex<dyn AsyncCallbackHandler<Out> + 'static>;
+  //   let unsafe_casted: Arc<Mutex<dyn AsyncCallbackHandler<Out>>> = unsafe { Arc::from_raw(raw) };
 
-    // in new thread:
-    let comp_mutex = unsafe_casted.clone();
-    std::thread::spawn(move || {
-      let rt = Runtime::new().unwrap();
-      let out = rt.block_on(async {
-        (func)(unsafe_casted, args).await
-      });
-      comp_mutex.lock().unwrap().handle_async_res(out);
-    });
-  }
+  //   // in new thread:
+  //   let comp_mutex = unsafe_casted.clone();
+  //   std::thread::spawn(move || {
+  //     let rt = Runtime::new().unwrap();
+  //     let out = rt.block_on(async {
+  //       (func)(unsafe_casted, args).await
+  //     });
+  //     comp_mutex.lock().unwrap().handle_async_res(out);
+  //   });
+  // }
 
   // used to execute async code that mutates a component within the component itself
-  pub fn exec_async<CType: AsyncCallbackHandler<Out>, Args, Out, F, Fut>(underlying: Arc<Mutex<Box<CType>>>, func: F, args: Args)
+  pub fn exec_async<CType: AsyncCallbackHandler<Out>, Args, Out, F, Fut>(underlying: Arc<Mutex<CType>>, func: F, args: Args)
   where
-    F: FnOnce(Arc<Mutex<Box<CType>>>, Args) -> Fut + Send + 'static,
+    F: FnOnce(Arc<Mutex<CType>>, Args) -> Fut + Send + 'static,
     Fut: Future<Output = Out> + Send + 'static,
     Args: Send + Sync + 'static,
     Out: Send + Sync + 'static

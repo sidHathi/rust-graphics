@@ -2,8 +2,8 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, Collision, SdfBoundary}, component::{Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
-use cgmath::{InnerSpace, Point3, Quaternion, Rotation, Vector3};
+use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
+use cgmath::{InnerSpace, Point3, Quaternion, Rad, Rotation, Rotation3, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 use super::test_child_component::TestChildComponent;
@@ -19,7 +19,8 @@ pub struct TestComponent {
   child_pos: ComponentTransform,
   collider: Option<Arc<RwLock<Collider>>>,
   active: bool,
-  mem: Option<Arc<Mutex<Self>>>
+  mem: Option<Arc<Mutex<Self>>>,
+  rotating: bool,
 }
 
 #[async_trait(?Send)]
@@ -56,10 +57,23 @@ impl ComponentFunctions for TestComponent {
     let _ = self.add_event_listener(scene, &key, &EventKey::KeyboardEvent);
     let _ = self.add_event_listener(scene, &key, &EventKey::CollisionStartEvent);
     let _ = self.add_state_listener(scene, &key, "parent_rotation".into());
+
+    if let Some(mem_safe) = self.mem.clone() {
+      Component::exec_async(mem_safe.clone(), Self::set_rotation_after_wait, ());
+    }
   }
 
   fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
-    ()
+    if self.rotating {
+      let axis = Vector3::<f32>::unit_y();
+      let angle = Rad(0.01);
+      if let Some(model_pos) = self.model_pos.as_mut() {
+        model_pos.apply_rot(axis, angle);
+      } else {
+        self.model_pos = Some(ModelTransform::default());
+        self.model_pos.as_mut().unwrap().set_rot(Quaternion::new(1., 0., 0., 0.));
+      }
+    }
   }
 
   fn render(&self, scene: &mut Scene) -> Result<(), EngineError> {
@@ -141,6 +155,7 @@ impl TestComponent {
       model_pos: None,
       collider: None,
       mem: None,
+      rotating: false,
     };
     let mem = Arc::new(Mutex::new(new_self));
     mem.lock().unwrap().mem = Some(mem.clone());
@@ -161,5 +176,16 @@ impl TestComponent {
   pub fn handle_collision(&mut self, component: ComponentKey, collision: Collision) {
     println!("Collision event with component {:?} detected and handled!", component);
     return
+  }
+
+  pub async fn set_rotation_after_wait(mem: Arc<Mutex<Self>>, args: ()) {
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+    mem.lock().unwrap().rotating = true;
+  }
+}
+
+impl AsyncCallbackHandler<()> for TestComponent {
+  fn handle_async_res(&mut self, data: ()) -> () {
+    println!("Async callback triggered");
   }
 }

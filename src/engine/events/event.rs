@@ -48,6 +48,7 @@ pub enum EventData {
   CustomEvent (String)
 }
 
+
 impl Event {
   pub fn from(event: &WindowEvent) -> Option<Self> {
     match event {

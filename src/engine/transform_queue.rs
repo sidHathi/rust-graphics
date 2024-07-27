@@ -1,6 +1,6 @@
 use cgmath::{Matrix, Matrix3, Matrix4, Point3, Quaternion, SquareMatrix, Vector3};
 
-use super::transforms::{ComponentTransform, ModelTransform, TransformType};
+use super::{renderable_model::RenderInstance, transforms::{ComponentTransform, GlobalTransform, ModelTransform, TransformType}};
 
 use crate::graphics::Instance;
 use cgmath::Transform;
@@ -32,31 +32,39 @@ impl TransformQueue {
     mat
   }
 
-  pub fn transform_model(&self, model_transform: &ModelTransform) -> ModelTransform {
+  pub fn transform_mt(&self, model_transform: &ModelTransform) -> GlobalTransform {
     let transform_type = model_transform.transform_type;
     let pos = model_transform.pos;
     let rot = model_transform.rot;
-    let instances = model_transform.instances.clone();
-    if model_transform.instanced {
-      if transform_type == TransformType::Global {
-        return model_transform.clone();
-      }
-      let instances_transformed = instances.iter()
-        .map(|i| Instance {
-          rotation: apply_quaternion_transform(&self.get_transform_matrix(), i.rotation),
-          position: to_vec(self.get_transform_matrix().transform_point(to_point(pos)))
-        })
-        .collect::<Vec<Instance>>();
-      return ModelTransform::instanced(instances_transformed, transform_type);
-    } else {
-      if transform_type == TransformType::Global {
-        return model_transform.clone();
-      }
-      let rot_transformed = apply_quaternion_transform(&self.get_transform_matrix(), rot);
-      let pos_transformed = to_vec(self.get_transform_matrix().transform_point(to_point(pos)));
-      // println!("Queue applied transform to single model. initial pos: {:?}, new pos: {:?}", pos, pos_transformed);
-      return ModelTransform::local(pos_transformed, rot_transformed);
+    if transform_type == TransformType::Global {
+      return GlobalTransform {
+        pos,
+        rot
+      };
     }
+
+    let rot_transformed = apply_quaternion_transform(&self.get_transform_matrix(), rot);
+    let pos_transformed = to_vec(self.get_transform_matrix().transform_point(to_point(pos)));
+    // println!("Queue applied transform to single model. initial pos: {:?}, new pos: {:?}", pos, pos_transformed);
+    return GlobalTransform {
+      pos: pos_transformed,
+      rot: rot_transformed
+    };
+  }
+
+  pub fn transform_instances(&self, render_instances: Vec<RenderInstance>) -> Vec<Instance> {
+    render_instances.iter()
+      .map(|ri| {
+        let transform_global = self.transform_mt(&ri.transform);
+        Instance {
+          position: transform_global.pos,
+          rotation: transform_global.rot,
+          opacity: ri.opacity,
+          scale: ri.scale
+        }
+      })
+      .into_iter()
+      .collect()
   }
 }
 

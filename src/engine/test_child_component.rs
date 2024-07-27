@@ -2,7 +2,7 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, test_component::TestComponent, transforms::ModelTransform, util::random_quaternion, Scene};
+use super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::RenderableModel, scene, state::{State, StateListener}, test_component::TestComponent, transforms::ModelTransform, util::random_quaternion, Scene};
 use cgmath::{Point3, Quaternion, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput};
@@ -15,7 +15,8 @@ pub struct TestChildComponent {
   active: bool,
   should_set_state: bool,
   collider: Option<Arc<RwLock<Collider>>>,
-  mem: Option<Arc<Mutex<Self>>>
+  mem: Option<Arc<Mutex<Self>>>,
+  pub should_interp_state: bool,
 }
 
 #[async_trait(?Send)]
@@ -41,14 +42,22 @@ impl ComponentFunctions for TestChildComponent {
     self.collider = Some(scene.collision_manager.add_component_collider(collision_boundary, key, None));
 
     let _ = self.add_event_listener(scene, &key, &EventKey::KeyboardEvent);
+    if let Some(mem_safe) = self.mem.clone() {
+      Component::exec_async(mem_safe, Self::wait_then_interpolate, ());
+    }
   }
 
   fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
     if self.should_set_state {
       let quaternion = random_quaternion();
       println!("setting new state: {:?}", quaternion);
-      let _ = scene.app_state.set_state("parent_rotation".into(), State::Quaternion(quaternion));
+      let _ = scene.app_state.set_state("parent_rotation", State::Quaternion(quaternion));
       self.should_set_state = false;
+    }
+
+    if self.should_interp_state {
+      scene.app_state.interpolate("child_rotation", State::Quaternion(Quaternion::new(1., 0., 0., 0.)), 5.);
+      self.should_interp_state = false;
     }
   }
 
@@ -59,7 +68,16 @@ impl ComponentFunctions for TestChildComponent {
       return Ok(());
     }
 
-    scene.render_model(&self.model.as_ref().unwrap(), ModelTransform::default())
+    let mut model_transform = ModelTransform::default();
+    if let Some(rotation_state) = scene.app_state.get_state("child_rotation") {
+      let rotation = rotation_state.get_quat().unwrap();
+      model_transform.set_rot(rotation);
+    }
+    
+    self.model.as_ref().unwrap()
+      .transform(model_transform)
+      .opacity(0.5)
+      .render(scene)
   }
 }
 
@@ -73,11 +91,17 @@ impl TestChildComponent {
       active: false,
       should_set_state: false,
       collider: None,
-      mem: None
+      mem: None,
+      should_interp_state: false
     };
     let mem = Arc::new(Mutex::new(new_self));
     mem.lock().unwrap().mem = Some(mem.clone());
     mem
+  }
+
+  pub async fn wait_then_interpolate(mem: Arc<Mutex<Self>>, args: ()) {
+    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+    mem.lock().unwrap().should_interp_state = true;
   }
 }
 
@@ -98,9 +122,9 @@ impl EventListener for TestChildComponent {
   }
 }
 
-impl AsyncCallbackHandler<i32> for TestChildComponent {
-  fn handle_async_res(&mut self, data: i32) -> () {
-    println!("received data: {}", data);
+impl AsyncCallbackHandler<()> for TestChildComponent {
+  fn handle_async_res(&mut self, data: ()) -> () {
+    println!("callback triggered");
   }
 }
 

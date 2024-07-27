@@ -2,7 +2,7 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::{ModelRenderer, RenderableModel}, state::{State, StateListener}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
+use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::RenderableModel, state::{State, StateListener}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
 use cgmath::{InnerSpace, Point3, Quaternion, Rad, Rotation, Rotation3, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
@@ -87,10 +87,16 @@ impl ComponentFunctions for TestComponent {
       }
     }
 
-    let res: Result<(), EngineError> = scene.render_model(&self.model.as_ref().unwrap(), self.model_pos.clone().unwrap_or(ModelTransform::default()));
-    if let Err(e) = res {
-        return Err(e);
+    if let Some(model) = self.model.as_ref() {
+      let res = model
+        .transform(self.model_pos.clone().unwrap_or(ModelTransform::default()))
+        .render(scene);
+
+      if let Err(e) = res {
+          return Err(e);
+      }
     }
+
     if let Some(child_safe) = self.child.clone() {
       return child_safe.render(scene, Some(self.child_pos.clone()));
     }

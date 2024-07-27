@@ -1,21 +1,27 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, hash::Hash};
+
+use instant::SystemTime;
 
 use crate::engine::{component::{self, Component, ComponentFunctions}, component_store::{ComponentKey, ComponentStore}, errors::EngineError, Scene};
 
-use super::event::{Event, EventKey, EventListener};
+use super::{event::{Event, EventKey, EventListener}, scheduled_event::{ScheduledEvent, ScheduledEventId}};
 
 pub struct EventManager {
+  next_se_index: u32,
   new_events: HashMap<EventKey, Vec<Event>>,
   event_listeners: HashMap<ComponentKey, HashMap<EventKey, fn(&mut dyn EventListener, Event) -> ()>>,
-  triggered_events: HashMap<ComponentKey, Vec<(EventKey, fn(&mut dyn EventListener, Event) -> ())>>
+  triggered_events: HashMap<ComponentKey, Vec<(EventKey, fn(&mut dyn EventListener, Event) -> ())>>,
+  scheduled_events: HashMap<ScheduledEventId, ScheduledEvent>,
 }
 
 impl EventManager {
   pub fn new() -> EventManager {
     Self {
+      next_se_index: 0,
       new_events: HashMap::new(),
       event_listeners: HashMap::new(),
-      triggered_events: HashMap::new()
+      triggered_events: HashMap::new(),
+      scheduled_events: HashMap::new()
     }
   }
 
@@ -101,5 +107,54 @@ impl EventManager {
     }
     
     self.new_events.clear();
+  }
+
+  pub fn schedule_at_time(&mut self, event: Event, time: SystemTime) {
+    let id = ScheduledEventId(self.next_se_index);
+    if let Some(se) = ScheduledEvent::at_time(event, time, id) {
+      self.scheduled_events.insert(id, se);
+      self.next_se_index += 1;
+    }
+  }
+
+  pub fn trigger_after_delay(&mut self, event: Event, delay_in_seconds: f64) {
+    let id = ScheduledEventId(self.next_se_index);
+    let se = ScheduledEvent::seconds_from_now(event, delay_in_seconds, id);
+    self.scheduled_events.insert(id, se);
+    self.next_se_index += 1;
+  }
+
+  pub fn schedule_recurrent(&mut self, event: Event, time_between: f64, start_offset: Option<f64>) {
+    let id = ScheduledEventId(self.next_se_index);
+    let se = ScheduledEvent::recurrent(event, time_between, start_offset, id);
+    self.scheduled_events.insert(id, se);
+    self.next_se_index += 1;
+  }
+
+  pub fn remove_se(&mut self, id: ScheduledEventId) -> Option<ScheduledEvent> {
+    self.scheduled_events.remove(&id)
+  }
+
+  pub fn update(&mut self, dt: instant::Duration) {
+    let mut ids_to_remove: Vec<ScheduledEventId> = Vec::new();
+    let mut events_to_handle: Vec<Event> = Vec::new();
+    for (id, se) in self.scheduled_events.iter_mut() {
+      se.update_time(dt);
+      if se.should_trigger() {
+        events_to_handle.push(se.event.clone());
+        if se.recurrent {
+          se.reset();
+        } else {
+          ids_to_remove.push(id.clone())
+        }
+      }
+    }
+    
+    for event in events_to_handle {
+      self.handle_event(event);
+    }
+    for id in ids_to_remove {
+      self.remove_se(id);
+    }
   }
 }

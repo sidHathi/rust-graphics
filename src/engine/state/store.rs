@@ -2,12 +2,13 @@ use std::{collections::{HashMap, HashSet}, os::macos::raw::stat};
 
 use crate::engine::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, Scene};
 
-use super::state::{State, StateListener};
+use super::{state::{State, StateListener}, state_interpolator::StateInterpolator};
 
 pub struct Store {
   state_map: HashMap<String, State>,
   state_listeners: HashMap<ComponentKey, HashMap<String, fn(&mut dyn StateListener, String, &State) -> ()>>,
   triggered_functions: HashMap<ComponentKey, Vec<(String, fn(&mut dyn StateListener, String, &State) -> ())>>,
+  interpolators: HashMap<String, StateInterpolator>,
 }
 
 impl Store {
@@ -17,6 +18,7 @@ impl Store {
       state_map,
       state_listeners: HashMap::new(),
       triggered_functions: HashMap::new(),
+      interpolators: HashMap::new()
     }
   }
 
@@ -28,18 +30,18 @@ impl Store {
     self.state_map.remove(key)
   }
 
-  pub fn set_state(&mut self, key: String, val: State) -> Result<State, EngineError> {
-    if !self.state_map.contains_key(&key) {
+  pub fn set_state(&mut self, key: &str, val: State) -> Result<State, EngineError> {
+    if !self.state_map.contains_key(key) {
       return Err(EngineError::ArgumentError { index: 1, name: "key".into() })
     }
-    if let Some(inserted) = self.state_map.insert(key.clone(), val) {
-      self.handle_state_change(key.clone());
+    if let Some(inserted) = self.state_map.insert(key.into(), val) {
+      self.handle_state_change(key.into());
       return Ok(inserted)
     }
     Err(EngineError::Custom("State set failed for unknown reason".into()))
   }
 
-  pub fn get_state(&self, key: &String) -> Option<&State> {
+  pub fn get_state(&self, key: &str) -> Option<&State> {
     self.state_map.get(key)
   }
 
@@ -89,6 +91,40 @@ impl Store {
           self.triggered_functions.get_mut(comp).unwrap().push((state_key.clone(), func.clone()))
         }
       }
+    }
+  }
+
+  pub fn interpolate(&mut self, key: &str, val: State, time: f64) {
+    if self.state_map.contains_key(key) {
+      let interpolator = StateInterpolator::new(key.into(), self.state_map.get(key).unwrap().clone(), val, time);
+      if let Some(valid_interp) = interpolator {
+        self.interpolators.insert(key.into(), valid_interp);
+      }
+    }
+  }
+
+  pub fn stop_interpolation(&mut self, key: &String) -> Option<StateInterpolator> {
+    self.interpolators.remove(key)
+  }
+
+  pub fn update(&mut self, dt: instant::Duration) {
+    let mut state_updates: HashMap<String, State> = HashMap::new();
+    let mut complete_interpolators: Vec<String> = Vec::new();
+    for (key, interpolator) in self.interpolators.iter_mut() {
+      interpolator.update(dt);
+      if self.state_map.contains_key(key) {
+        state_updates.insert(key.clone(), interpolator.get_current());
+      }
+      if interpolator.complete() {
+        complete_interpolators.push(key.clone());
+      }
+    }
+
+    for (key, new_val) in state_updates.iter() {
+      self.state_map.insert(key.clone(), new_val.clone());
+    }
+    for intp_key in complete_interpolators {
+      self.interpolators.remove(&intp_key);
     }
   }
 }

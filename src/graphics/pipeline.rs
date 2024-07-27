@@ -31,7 +31,18 @@ pub fn get_render_pipeline(
       entry_point: frag_entry,
       targets: &[Some(wgpu::ColorTargetState { // 4.
         format: color_format,
-        blend: Some(wgpu::BlendState::REPLACE),
+        blend: Some(wgpu::BlendState {
+          color: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::SrcAlpha,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+          },
+          alpha: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+          },
+        }),
         write_mask: wgpu::ColorWrites::ALL,
       })],
     }),

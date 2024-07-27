@@ -12,5 +12,6 @@ mod state;
 mod events;
 mod util;
 mod collisions;
+mod renderable_model;
 
 pub use scene::Scene;

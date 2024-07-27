@@ -67,6 +67,7 @@ pub struct Mesh {
 pub struct Model {
   pub meshes: Vec<Mesh>,
   pub materials: Vec<Material>,
+  pub bounds: [(f32, f32); 3]
 }
 
 pub trait Vertex {

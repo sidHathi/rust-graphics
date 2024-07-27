@@ -6,7 +6,7 @@ use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
 
-use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, events::{Event, EventManager}, model_renderer::{ModelRenderer, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, events::{Event, EventManager}, model_renderer::ModelRenderer, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
 
 // The Scene struct contains the data needed to render the wgpu scene
 // It manages the camera, lighting and i/o. It also handles the operation
@@ -88,7 +88,7 @@ impl Scene {
       .copied()
       .filter(|f| f.is_srgb())
       .next()
-      .unwrap_or(surface_caps.formats[0]);
+      .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
 
     let config = wgpu::SurfaceConfiguration {
       usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -96,7 +96,7 @@ impl Scene {
       width: size.width,
       height: size.height,
       present_mode: surface_caps.present_modes[0],
-      alpha_mode: surface_caps.alpha_modes[0],
+      alpha_mode: wgpu::CompositeAlphaMode::PostMultiplied,
       view_formats: vec![]
     };
     surface.configure(&device, &config);
@@ -371,6 +371,9 @@ impl Scene {
 
   pub fn update(&mut self, dt: instant::Duration) {
     // trigger any event callbacks:
+    self.event_manager.update(dt);
+    self.app_state.update(dt);
+
     self.event_manager.trigger_callbacks(&mut self.components);
     let _ = self.app_state.trigger_callbacks(&mut self.components);
 
@@ -469,9 +472,9 @@ impl Scene {
     }
   }
 
-  pub fn render_model(&mut self, model: &RenderableModel, transform: ModelTransform) -> Result<(), EngineError> {
+  pub fn render_model(&mut self, model: &RenderableModel, render_settings: Option<RenderSettings>) -> Result<(), EngineError> {
     // needs to position/rotate the model appropriately too
-    self.model_renderer.render(model, transform, &self.queue, &self.device)
+    self.model_renderer.render(model, render_settings.unwrap_or(RenderSettings::default()), &self.queue, &self.device)
     // self.model_renderer.render_from_cache(model)
   }
 }

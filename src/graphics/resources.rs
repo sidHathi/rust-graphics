@@ -1,3 +1,4 @@
+use core::f32;
 use std::io::{BufReader, Cursor};
 
 use cfg_if::cfg_if;
@@ -61,24 +62,40 @@ pub async fn load_model(
     ));
   }
 
+  let mut xmin = f32::INFINITY;
+  let mut xmax = f32::NEG_INFINITY;
+  let mut ymin = f32::INFINITY;
+  let mut ymax = f32::NEG_INFINITY;
+  let mut zmin = f32::INFINITY;
+  let mut zmax = f32::NEG_INFINITY;
+
   let meshes = models
     .into_iter()
     .map(|m| {
       let mut vertices = (0..m.mesh.positions.len() / 3)
-        .map(|i| ModelVertex {
-          position: [
-              m.mesh.positions[i * 3],
-              m.mesh.positions[i * 3 + 1],
-              m.mesh.positions[i * 3 + 2],
-          ],
-          tex_coords: [m.mesh.texcoords[i * 2], 1.0 - m.mesh.texcoords[i * 2 + 1]],
-          normal: [
-              m.mesh.normals[i * 3],
-              m.mesh.normals[i * 3 + 1],
-              m.mesh.normals[i * 3 + 2],
-          ],
-          tangent: [0.0; 3],
-          bitangent: [0.0; 3],
+        .map(|i| {
+          xmin = xmin.min(m.mesh.positions[i * 3]);
+          xmax = xmax.max(m.mesh.positions[i * 3]);
+          ymin = ymin.min(m.mesh.positions[i * 3 + 1]);
+          ymax = ymax.max(m.mesh.positions[i * 3 + 1]);
+          zmin = zmin.min(m.mesh.positions[i * 3 + 2]);
+          zmax = zmax.max(m.mesh.positions[i * 3 + 2]);
+
+          ModelVertex {
+            position: [
+                m.mesh.positions[i * 3],
+                m.mesh.positions[i * 3 + 1],
+                m.mesh.positions[i * 3 + 2],
+            ],
+            tex_coords: [m.mesh.texcoords[i * 2], 1.0 - m.mesh.texcoords[i * 2 + 1]],
+            normal: [
+                m.mesh.normals[i * 3],
+                m.mesh.normals[i * 3 + 1],
+                m.mesh.normals[i * 3 + 2],
+            ],
+            tangent: [0.0; 3],
+            bitangent: [0.0; 3],
+          }
         })
         .collect::<Vec<_>>();
 
@@ -166,10 +183,15 @@ pub async fn load_model(
       }
     })
     .collect::<Vec<_>>();
+  let mut bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)];
+  if meshes.len() < 1 {
+    bounds = [(0., 0.), (0., 0.), (0., 0.)];
+  }
   
   Ok(Model {
     meshes,
-    materials
+    materials,
+    bounds
   })
 }
 

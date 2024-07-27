@@ -3,7 +3,7 @@ use winit::{
   dpi::PhysicalPosition, event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent}, window::Window
 };
 use image::GenericImageView;
-use cgmath::prelude::*;
+use cgmath::{prelude::*, Vector3};
 
 use crate::graphics::texture;
 
@@ -292,7 +292,10 @@ impl State {
         };
 
         Instance {
-          position, rotation
+          position,
+          rotation,
+          opacity: 1.,
+          scale: Vector3::new(1., 1., 1.)
         }
       })
     }).collect::<Vec<_>>();

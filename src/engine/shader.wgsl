@@ -29,6 +29,7 @@ struct InstanceInput {
   @location(9) normal_matrix_0: vec3<f32>,
   @location(10) normal_matrix_1: vec3<f32>,
   @location(11) normal_matrix_2: vec3<f32>,
+  @location(12) opacity: f32,
 }
 
 struct VertexOutput {
@@ -37,6 +38,7 @@ struct VertexOutput {
   @location(1) tangent_position: vec3<f32>,
   @location(2) tangent_light_position: vec3<f32>,
   @location(3) tangent_view_position: vec3<f32>,
+  @location(4) opacity: f32
 };
 
 @vertex
@@ -72,6 +74,7 @@ fn vs_main(
   out.tangent_position = tangent_matrix * world_position.xyz;
   out.tangent_view_position = tangent_matrix * camera.view_pos.xyz;
   out.tangent_light_position = tangent_matrix * light.position;
+  out.opacity = instance.opacity;
   return out;
 }
 
@@ -108,7 +111,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
   let result = (ambient_color + diffuse_color + specular_color) * object_color.xyz;
 
-  return vec4<f32>(result, object_color.a);
+  return vec4<f32>(result, object_color.a * in.opacity);
 }
 
 @fragment

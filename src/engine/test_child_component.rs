@@ -2,7 +2,7 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::RenderableModel, scene, state::{State, StateListener}, test_component::TestComponent, transforms::ModelTransform, util::random_quaternion, Scene};
+use super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, test_component::TestComponent, transforms::ModelTransform, util::random_quaternion, Scene};
 use cgmath::{Point3, Quaternion, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput};
@@ -77,6 +77,7 @@ impl ComponentFunctions for TestChildComponent {
     self.model.as_ref().unwrap()
       .transform(model_transform)
       .opacity(0.5)
+      .dims(ModelDims::new(10., 10., 10.))
       .render(scene)
   }
 }

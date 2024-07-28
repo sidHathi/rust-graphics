@@ -1,5 +1,10 @@
 use std::mem;
 use super::model::Vertex;
+use cgmath::{
+  Matrix4,
+  Matrix3,
+  Vector3
+};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Instance {
@@ -11,9 +16,18 @@ pub struct Instance {
 
 impl Instance {
   pub fn to_raw(&self) -> InstanceRaw {
+    let translation = Matrix4::from_translation(self.position);
+    let rotation = Matrix4::from(self.rotation);
+    let scale = Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z);
+    let scale_3 = Matrix3::from_cols(
+      Vector3::new(self.scale.x, 0., 0.), 
+      Vector3::new(0., self.scale.y, 0.), 
+      Vector3::new(0., 0., self.scale.z)
+    );
     InstanceRaw {
-      model: (cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation)).into(),
-      normal: cgmath::Matrix3::from(self.rotation).into()
+      model: (translation * rotation * scale).into(),
+      normal: (Matrix3::from(self.rotation) * scale_3).into(),
+      opacity: self.opacity
     }
   }
 }
@@ -23,7 +37,8 @@ impl Instance {
 #[allow(dead_code)]
 pub struct InstanceRaw {
   model: [[f32; 4]; 4],
-  normal: [[f32; 3]; 3]
+  normal: [[f32; 3]; 3],
+  opacity: f32
 }
 
 impl Vertex for InstanceRaw {
@@ -73,6 +88,11 @@ impl Vertex for InstanceRaw {
           offset: mem::size_of::<[f32; 22]>() as wgpu::BufferAddress,
           shader_location: 11,
           format: wgpu::VertexFormat::Float32x3,
+        },
+        wgpu::VertexAttribute {
+          offset: mem::size_of::<[f32; 25]>() as wgpu::BufferAddress,
+          shader_location: 12,
+          format: wgpu::VertexFormat::Float32,
         },
       ],
     }

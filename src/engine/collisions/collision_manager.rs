@@ -2,7 +2,7 @@ use std::{borrow::Borrow, collections::{HashMap, HashSet}, hash::Hash, ops::Inde
 
 use cgmath::Matrix4;
 
-use crate::engine::{component::Component, component_store::ComponentKey, events::{Event, EventData, EventKey, EventManager}, transform_queue::{apply_quaternion_transform, to_point, to_vec}, transforms::{ColliderTransform, ComponentTransform}, Scene};
+use crate::engine::{component::Component, component_store::ComponentKey, events::{Event, EventData, EventKey, EventManager}, raycasting::{Ray, RayIntersect, Raycast}, transform_queue::{apply_quaternion_transform, to_point, to_vec}, transforms::{ColliderTransform, ComponentTransform}, Scene};
 
 use super::collider::{Collider, ColliderBoundary, Collision};
 use cgmath::Transform;
@@ -124,9 +124,14 @@ impl CollisionManager {
             collision: collision.clone()
           };
           event_manager.handle_event(Event {
-            key: EventKey::CollisionOngoingEvent,
+            key: EventKey::CollisionOngoingEvent(c1.clone()),
+            data: co_event_data.clone()
+          });
+          event_manager.handle_event(Event {
+            key: EventKey::CollisionOngoingEvent(c2.clone()),
             data: co_event_data
           });
+
           new_colliding_pairs.insert(index_pair.clone());
           if !self.colliding_pairs.contains(&index_pair) {
             let cs_event_data = EventData::CollisionStartEvent { 
@@ -135,7 +140,11 @@ impl CollisionManager {
               collision: collision.clone()
             };
             event_manager.handle_event(Event {
-              key: EventKey::CollisionStartEvent,
+              key: EventKey::CollisionStartEvent(c1.clone()),
+              data: cs_event_data.clone()
+            });
+            event_manager.handle_event(Event {
+              key: EventKey::CollisionStartEvent(c2.clone()),
               data: cs_event_data
             });
           }
@@ -154,13 +163,51 @@ impl CollisionManager {
         let collider_keys = (index_pair.0, index_pair.1);
         let ce_event_data = EventData::CollisionEndEvent { c1, c2, collider_keys };
         event_manager.handle_event(Event {
-          key: EventKey::CollisionEndEvent,
+          key: EventKey::CollisionEndEvent(c1),
+          data: ce_event_data.clone()
+        });
+        event_manager.handle_event(Event {
+          key: EventKey::CollisionEndEvent(c2),
           data: ce_event_data
         });
       }
     }
 
     self.colliding_pairs = new_colliding_pairs;
+  }
+
+  pub fn intersect_raycasts(&self, raycasts: Vec<&mut Raycast>) {
+    // for each ray
+    // figure out if intersects any of the colliders -> that's basicaly it
+    for raycast in raycasts {
+      raycast.intersections.clear();
+      for collider in self.index_collider_map.values() {
+        if let Some(collision_loc) = collider.read().unwrap().intersects_ray(&raycast.ray, raycast.max_dist) {
+          raycast.intersections.push(RayIntersect {
+            component: collider.read().unwrap().parent,
+            loc: collision_loc,
+            collider_idx: collider.read().unwrap().index
+          });
+        }
+      }
+    }
+  }
+
+  pub fn intersect_ray(&self, ray: &Ray, max_dist: f32) -> Vec<RayIntersect> {
+    // for each ray
+    // figure out if intersects any of the colliders -> that's basicaly it
+    let mut intersections: Vec<RayIntersect> = Vec::new();
+    for collider in self.index_collider_map.values() {
+      if let Some(collision_loc) = collider.read().unwrap().intersects_ray(ray, max_dist) {
+        intersections.push(RayIntersect {
+          component: collider.read().unwrap().parent,
+          loc: collision_loc,
+          collider_idx: collider.read().unwrap().index
+        });
+      }
+    }
+
+    intersections
   }
 }
 

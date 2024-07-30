@@ -14,22 +14,28 @@ pub struct Event {
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 pub enum EventKey {
   KeyboardEvent,
-  MouseRaycastEvent,
-  ComponentEvent,
-  CollisionOngoingEvent,
-  CollisionStartEvent,
-  CollisionEndEvent,
+  MouseHoverEvent(ComponentKey),
+  MouseSelectEvent(ComponentKey),
+  CollisionOngoingEvent(ComponentKey),
+  CollisionStartEvent(ComponentKey),
+  CollisionEndEvent(ComponentKey),
+  RaycastIntersectEvent(ComponentKey),
   CustomEvent,
 }
 
 #[derive(Clone)]
 pub enum EventData {
   KeyboardEvent (KeyboardInput),
-  MouseRaycastEvent {
-    origin: Point3<f32>,
-    dir: Vector3<f32>
+  MouseHoverEvent {
+    component: ComponentKey,
+    collider_idx: u32,
+    intersect_loc: Point3<f32>
   },
-  ComponentEvent (ComponentEvent),
+  MouseSelectEvent {
+    component: ComponentKey,
+    collider_idx: u32,
+    intersect_loc: Point3<f32>
+  },
   CollisionOngoingEvent {
     c1: ComponentKey,
     c2: ComponentKey,
@@ -44,6 +50,11 @@ pub enum EventData {
     c1: ComponentKey,
     c2: ComponentKey,
     collider_keys: (u32, u32)
+  },
+  RaycastIntersectEvent {
+    component: ComponentKey,
+    collider_idx: u32,
+    intersect_loc: Point3<f32>
   },
   CustomEvent (String)
 }

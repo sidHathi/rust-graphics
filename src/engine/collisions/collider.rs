@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use cgmath::{num_traits::abs, EuclideanSpace, Matrix4, Point3, Quaternion, SquareMatrix, Transform, Vector3};
 
-use crate::{engine::{component_store::ComponentKey, transforms::ColliderTransform}, sdf::SdfShape};
+use crate::{engine::{component_store::ComponentKey, raycasting::Ray, transforms::ColliderTransform}, sdf::SdfShape};
 
 pub const NORMAL_TOL: f32 = 0.01;
 
@@ -11,6 +11,7 @@ pub trait ColliderBoundary: Send + Sync {
   fn is_interior_point(&self, pt: Point3<f32>) -> bool;
   fn get_boundary_normal(&self, pt: Point3<f32>, tol: f32) -> Option<Vector3<f32>>;
   fn center(&self) -> Point3<f32>;
+  fn ray_intersect(&self, ray: &Ray, max_dist: f32) -> Option<Point3<f32>>;
 }
 
 
@@ -90,6 +91,10 @@ impl Collider {
     }
     self.collision_map.insert(collider_idx, col.clone());
     Some(col.clone())
+  }
+
+  pub fn intersects_ray(&self, ray: &Ray, max_dist: f32) -> Option<Point3<f32>> {
+    self.underlying.lock().unwrap().ray_intersect(ray, max_dist)
   }
 
   pub fn get_collisions(&self) -> Vec<&Collision> {

@@ -32,6 +32,11 @@ impl ColliderBoundary for SdfBoundary {
     }
     None
   }
+
+  fn ray_intersect(&self, ray: &crate::engine::raycasting::Ray, max_dist: f32) -> Option<Point3<f32>> {
+    let mut iters: u32 = 0;
+    ray.sphere_trace(&self.sdf, Some(max_dist), None, None, &mut iters)
+  }
 }
 
 impl SdfBoundary {

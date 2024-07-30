@@ -55,7 +55,7 @@ impl ComponentFunctions for TestComponent {
     self.collider = Some(scene.collision_manager.add_component_collider(collision_boundary, key, None));
     
     let _ = self.add_event_listener(scene, &key, &EventKey::KeyboardEvent);
-    let _ = self.add_event_listener(scene, &key, &EventKey::CollisionStartEvent);
+    let _ = self.add_event_listener(scene, &key, &EventKey::CollisionStartEvent(self.key.clone()));
     let _ = self.add_state_listener(scene, &key, "parent_rotation".into());
 
     if let Some(mem_safe) = self.mem.clone() {

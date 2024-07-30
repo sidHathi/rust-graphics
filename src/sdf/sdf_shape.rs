@@ -4,7 +4,7 @@ use cgmath::{
   num_traits::abs, InnerSpace, MetricSpace, Point3, Vector2, Vector3
 };
 
-const EPSILON: f32 = 1e4;
+const EPSILON: f32 = 1e-4;
 // the assumption is, that in this use case, the sphere trace guess should be almost correct
 const DEFAULT_TRACE_ITERS: usize = 1; 
 
@@ -122,15 +122,14 @@ impl SdfShape {
     let tol = caller_tol.unwrap_or(EPSILON);
     let mut iter: usize = 0;
     let mut loc = p.clone();
-    let mut hit = false;
-    while (!hit && iter < max_iters) {
+    while iter < max_iters {
       let dist = self.dist(p);
       loc = loc + (self.compute_normal(loc) * dist);
-      if (dist < tol) {
-        hit = true;
+      if dist < tol {
         *hit_loc = loc;
         return true;
       }
+      iter += 1;
     }
     false
   }

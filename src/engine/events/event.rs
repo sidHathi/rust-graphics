@@ -3,8 +3,6 @@ use winit::event::{KeyboardInput, WindowEvent};
 
 use crate::engine::{collisions::Collision, component_store::ComponentKey, errors::EngineError, Scene};
 
-use super::component_event::ComponentEvent;
-
 #[derive(Clone)]
 pub struct Event {
   pub key: EventKey,
@@ -14,22 +12,32 @@ pub struct Event {
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 pub enum EventKey {
   KeyboardEvent,
-  MouseHoverEvent(ComponentKey),
+  MouseHoverStartEvent(ComponentKey),
+  MouseHoverEndEvent(ComponentKey),
+  MouseHoveringEvent(ComponentKey),
   MouseSelectEvent(ComponentKey),
   CollisionOngoingEvent(ComponentKey),
   CollisionStartEvent(ComponentKey),
   CollisionEndEvent(ComponentKey),
   RaycastIntersectEvent(ComponentKey),
-  CustomEvent,
 }
 
 #[derive(Clone)]
 pub enum EventData {
   KeyboardEvent (KeyboardInput),
-  MouseHoverEvent {
+  MouseHoverStartEvent {
     component: ComponentKey,
     collider_idx: u32,
     intersect_loc: Point3<f32>
+  },
+  MouseHoveringEvent {
+    component: ComponentKey,
+    collider_idx: u32,
+    intersect_loc: Point3<f32>
+  },
+  MouseHoverEndEvent {
+    component: ComponentKey,
+    collider_idx: u32,
   },
   MouseSelectEvent {
     component: ComponentKey,
@@ -56,9 +64,7 @@ pub enum EventData {
     collider_idx: u32,
     intersect_loc: Point3<f32>
   },
-  CustomEvent (String)
 }
-
 
 impl Event {
   pub fn from(event: &WindowEvent) -> Option<Self> {
@@ -76,7 +82,7 @@ impl Event {
 }
 
 pub trait EventListener {
-  fn handle_event(&mut self, event: Event) {
+  fn handle_event(&mut self, _: Event) {
     ()
   }
 

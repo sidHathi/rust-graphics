@@ -2,7 +2,7 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::RenderableModel, state::{State, StateListener}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
+use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, state::{State, StateListener}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
 use cgmath::{InnerSpace, Point3, Quaternion, Rad, Rotation, Rotation3, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
@@ -50,12 +50,15 @@ impl ComponentFunctions for TestComponent {
       Quaternion::new(5., 0., 0., 0.)
     );
 
-    let collision_sdf = SdfShape::new(Shape::Cube { center: Point3::new(0., 0., 0.), half_bounds:  Vector3::new(20., 20., 20.)}, CubeSdf);
+    let collision_sdf = SdfShape::new(Shape::Cube { center: Point3::new(0., 0., 0.), width: 20., height: 20., depth: 20.}, CubeSdf);
     let collision_boundary = SdfBoundary::new(Point3::new(0., 0., 0.), collision_sdf);
     self.collider = Some(scene.collision_manager.add_component_collider(collision_boundary, key, None));
     
     let _ = self.add_event_listener(scene, &key, &EventKey::KeyboardEvent);
     let _ = self.add_event_listener(scene, &key, &EventKey::CollisionStartEvent(self.key.clone()));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverStartEvent(self.key.clone()));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverEndEvent(self.key.clone()));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoveringEvent(self.key.clone()));
     let _ = self.add_state_listener(scene, &key, "parent_rotation".into());
 
     if let Some(mem_safe) = self.mem.clone() {
@@ -69,6 +72,9 @@ impl ComponentFunctions for TestComponent {
       let angle = Rad(0.01);
       if let Some(model_pos) = self.model_pos.as_mut() {
         model_pos.apply_rot(axis, angle);
+        if let Some(collider) = self.collider.clone() {
+          collider.write().unwrap().update_rot(Quaternion::from_axis_angle(axis, angle));
+        }
       } else {
         self.model_pos = Some(ModelTransform::default());
         self.model_pos.as_mut().unwrap().set_rot(Quaternion::new(1., 0., 0., 0.));
@@ -90,6 +96,7 @@ impl ComponentFunctions for TestComponent {
     if let Some(model) = self.model.as_ref() {
       let res = model
         .transform(self.model_pos.clone().unwrap_or(ModelTransform::default()))
+        .dims(ModelDims::new(20., 20., 20.))
         .render(scene);
 
       if let Err(e) = res {
@@ -131,6 +138,15 @@ impl EventListener for TestComponent {
         } else {
           self.handle_collision(c1, collision);
         }
+      },
+      EventData::MouseHoverStartEvent { component, collider_idx, intersect_loc } => {
+        println!("Handling mouse hover start event!");
+      },
+      EventData::MouseHoveringEvent { component, collider_idx, intersect_loc } => {
+        println!("Handling mouse hovering event!");
+      },
+      EventData::MouseHoverEndEvent { component, collider_idx } => {
+        println!("Handling mouse hover end event!");
       }
       _ => ()
     }

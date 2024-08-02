@@ -37,7 +37,7 @@ impl ComponentFunctions for TestChildComponent {
       self.model = None;
     }
 
-    let collision_sdf = SdfShape::new(Shape::Cube { center: Point3::new(0., 0., 0.), half_bounds:  Vector3::new(20., 20., 20.)}, CubeSdf);
+    let collision_sdf = SdfShape::new(Shape::Cube { center: Point3::new(0., 0., 0.), width: 10., height: 10., depth: 10.}, CubeSdf);
     let collision_boundary = SdfBoundary::new(Point3::new(0., 0., 0.), collision_sdf);
     self.collider = Some(scene.collision_manager.add_component_collider(collision_boundary, key, None));
 
@@ -72,6 +72,9 @@ impl ComponentFunctions for TestChildComponent {
     if let Some(rotation_state) = scene.app_state.get_state("child_rotation") {
       let rotation = rotation_state.get_quat().unwrap();
       model_transform.set_rot(rotation);
+      if let Some(collider) = self.collider.clone() {
+        collider.write().unwrap().update_rot(rotation);
+      }
     }
     
     self.model.as_ref().unwrap()

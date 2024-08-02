@@ -4,6 +4,7 @@ use crate::{engine::transforms::ComponentTransform, sdf::SdfShape};
 
 use super::collider::ColliderBoundary;
 
+#[derive(Clone, Debug)]
 pub struct SdfBoundary {
   pub center: Point3<f32>,
   pub sdf: SdfShape

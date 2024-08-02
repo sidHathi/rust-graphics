@@ -90,6 +90,10 @@ impl Projection {
     }
   }
 
+  pub fn get_fovy(&self) -> Rad<f32> {
+    self.fovy
+  }
+
   pub fn resize(&mut self, width: u32, height: u32) {
     self.aspect = width as f32 / height as f32;
   }

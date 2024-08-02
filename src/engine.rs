@@ -14,5 +14,7 @@ mod util;
 mod collisions;
 mod renderable_model;
 mod raycasting;
+mod mouse;
+mod debug;
 
 pub use scene::Scene;

@@ -6,9 +6,9 @@ use cgmath::{
 
 const EPSILON: f32 = 1e-4;
 // the assumption is, that in this use case, the sphere trace guess should be almost correct
-const DEFAULT_TRACE_ITERS: usize = 1; 
+const DEFAULT_TRACE_ITERS: usize = 5; 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Shape {
   Sphere {
     center: Point3<f32>,
@@ -20,7 +20,9 @@ pub enum Shape {
   },
   Cube {
     center: Point3<f32>,
-    half_bounds: Vector3<f32>
+    width: f32,
+    height: f32,
+    depth: f32,
   },
   Cylinder {
     a: Point3<f32>,
@@ -47,7 +49,8 @@ pub fn SphereSdf(shape: &Shape, point: Point3<f32>) -> f32 {
 
 pub fn CubeSdf(shape: &Shape, p: Point3<f32>) -> f32 {
   match shape {
-    Shape::Cube { center, half_bounds } => {
+    Shape::Cube { center, width, height, depth } => {
+      let half_bounds = Vector3::new(*width/2.,* height/2., *depth/2.);
       let mut d = 0.;
       if abs(p.x) < half_bounds.x && abs(p.y) < half_bounds.y && abs(p.z) < half_bounds.z {
           return f32::max(f32::max(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y) as f32, abs(p.z) - half_bounds.z as f32);
@@ -80,7 +83,7 @@ pub fn CubeSdf(shape: &Shape, p: Point3<f32>) -> f32 {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SdfShape {
   shape: Shape,
   sdf_fn: fn(&Shape, Point3<f32>) -> f32

@@ -1,12 +1,12 @@
-use std::sync::{Arc, Mutex};
+use std::{collections::HashMap, fmt::Debug, sync::{Arc, Mutex}};
 
-use cgmath::Rotation3;
+use cgmath::{Rotation3, Vector2};
 use winit::{event::{ElementState, KeyboardInput, MouseButton, WindowEvent}, window::Window};
 use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
 
-use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, events::{Event, EventManager}, model_renderer::ModelRenderer, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugRenderPipelineType, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
 
 // The Scene struct contains the data needed to render the wgpu scene
 // It manages the camera, lighting and i/o. It also handles the operation
@@ -41,6 +41,10 @@ pub struct Scene {
   pub app_state: Store, // state manager
   pub event_manager: EventManager, // event manager
   pub collision_manager: CollisionManager, // collision manager
+  pub raycast_manager: RaycastManager,
+  pub mouse: Mouse,
+  pub debug_renderer: DebugRenderer,
+  pub debug_render_pipelines: HashMap<DebugRenderPipelineType, wgpu::RenderPipeline>,
 }
 
 impl Scene {
@@ -277,6 +281,10 @@ impl Scene {
     let app_state = create_app_state();
     let event_manager = EventManager::new();
     let collision_manager = CollisionManager::new();
+    let raycast_manager = RaycastManager::new();
+    let mouse = Mouse::new(10000.);
+    let debug_renderer = DebugRenderer::new();
+    let debug_render_pipelines = HashMap::new();
 
     let mut scene = Self {
       window,
@@ -307,7 +315,11 @@ impl Scene {
       app: None,
       app_state,
       event_manager,
-      collision_manager
+      collision_manager,
+      raycast_manager,
+      mouse,
+      debug_renderer,
+      debug_render_pipelines
     };
 
     println!("Scene initialized");
@@ -356,13 +368,24 @@ impl Scene {
       WindowEvent::MouseWheel { delta, .. } => {
         self.camera_controller.process_scroll(delta);
         true
-      }
+      },
       WindowEvent::MouseInput {
         button: MouseButton::Left,
         state,
         ..
       } => {
         self.mouse_pressed = *state == ElementState::Pressed;
+        true
+      },
+      WindowEvent::CursorMoved { 
+        position, 
+        ..
+      } => {
+        self.mouse.update_mouse_state(Some(Vector2::new(position.x as f32, position.y as f32)), self.mouse_pressed, &self.camera, &self.projection, &self.config);
+        true
+      },
+      WindowEvent::CursorLeft { .. } => {
+        self.mouse.update_mouse_state(None, self.mouse_pressed, &self.camera, &self.projection, &self.config);
         true
       }
       _ => false,
@@ -406,7 +429,12 @@ impl Scene {
       return Ok(());
     }
     self.collision_manager.update_collider_positions(self.model_renderer.get_position_cache());
+    self.raycast_manager.intersect_colliders(&self.collision_manager);
+    self.mouse.intersect_colliders(&self.collision_manager);
     self.collision_manager.trigger_collision_events(&mut self.event_manager);
+    self.raycast_manager.trigger_raycast_events(&mut self.event_manager);
+    self.mouse.trigger_mouse_events(&mut self.event_manager);
+
 
     let output = self.surface.get_current_texture()?;
     let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -453,12 +481,18 @@ impl Scene {
         render_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
         render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
       }
+
+      use crate::engine::debug::DrawDebugRenderables;
+      for (key, val) in self.debug_render_pipelines.iter() {
+        render_pass.draw_debug_renderables(&self.debug_renderer, key.clone(), &val, &self.camera_bind_group);
+      }
     }
 
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
     // clear model render list
     self.model_renderer.clear();
+    self.debug_renderer.reset();
     Ok(())
   }
 

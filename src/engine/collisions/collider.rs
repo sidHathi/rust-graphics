@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{collections::HashMap, fmt::Debug, sync::{Arc, Mutex}};
 
 use cgmath::{num_traits::abs, EuclideanSpace, Matrix4, Point3, Quaternion, SquareMatrix, Transform, Vector3};
 
@@ -6,7 +6,7 @@ use crate::{engine::{component_store::ComponentKey, raycasting::Ray, transforms:
 
 pub const NORMAL_TOL: f32 = 0.01;
 
-pub trait ColliderBoundary: Send + Sync {
+pub trait ColliderBoundary: Send + Sync + Debug {
   fn closest_boundary_pt(&self, pt: Point3<f32>) -> Point3<f32>;
   fn is_interior_point(&self, pt: Point3<f32>) -> bool;
   fn get_boundary_normal(&self, pt: Point3<f32>, tol: f32) -> Option<Vector3<f32>>;
@@ -46,28 +46,41 @@ impl Collider {
     }
   }
 
-  pub fn closest_boundary_pt(&self, pt: Point3<f32>) -> Point3<f32> {
+  pub fn closest_boundary_pt(&self, pt: Point3<f32>) -> Option<Point3<f32>> {
     // needs to transform the point into own coord system and then find closest
+    if self.transform.get_global_transform().is_none() {
+      return None
+    }
+    
     if let Some(t_mat) = self.transform.to_coord_matrix().invert() {
       let transformed = t_mat.transform_point(pt);
-      return self.underlying.lock().unwrap().closest_boundary_pt(transformed)
+      return Some(t_mat.transform_point(self.underlying.lock().unwrap().closest_boundary_pt(transformed)))
     }
-    self.underlying.lock().unwrap().closest_boundary_pt(pt)
+    None
+    // self.underlying.lock().unwrap().closest_boundary_pt(pt)
   }
 
   pub fn collide(&self, other: &Collider) -> Option<Collision> {
-    let mut center = self.underlying.lock().unwrap().center().to_vec() + self.transform.relative_pos;
+    let center: Vector3<f32>;
     if let Some(global_transform) = self.transform.get_global_transform() {
       // println!("Collider global transform: {:?}", global_transform);
       center = self.underlying.lock().unwrap().center().to_vec() + global_transform.pos;
+    } else {
+      return None
     }
+    // println!("Checking collision for collider {}, with global center point {:?}", self.index, center);
     let closest = other.closest_boundary_pt(Point3::from_vec(center));
+    if closest.is_none() {
+      return None
+    }
+    // println!("Closest boundary point on collider {} to center point {:?} for collider {} is {:?}", other.index, center, self.index, closest);
     // closest point has to be transformed into collider space ofc
-    let local_pos = self.get_collider_coord_matrix().transform_point(closest);
+    let local_pos = self.get_collider_coord_matrix().transform_point(closest.unwrap());
     if self.underlying.lock().unwrap().is_interior_point(local_pos) {
-      let normal = self.underlying.lock().unwrap().get_boundary_normal(closest, NORMAL_TOL);
+      // println!("Interior colliding point detected at local pos {:?}, sdf bounds: {:?}, closest point (global transform): {:?}. Collider indices ({}, {})", local_pos, self.underlying.lock().as_ref(), closest, self.index, other.index);
+      let normal = self.underlying.lock().unwrap().get_boundary_normal(closest.unwrap(), NORMAL_TOL);
       return Some(Collision {
-        loc: closest,
+        loc: closest.unwrap(),
         normal,
         colliders: (self.index, other.index)
       })
@@ -79,6 +92,7 @@ impl Collider {
     if let Some(transform_matrix) = self.transform.to_coord_matrix().invert() {
       return transform_matrix
     }
+    println!("Collider matrix non-invertible");
     Matrix4::identity()
   }
 
@@ -94,7 +108,9 @@ impl Collider {
   }
 
   pub fn intersects_ray(&self, ray: &Ray, max_dist: f32) -> Option<Point3<f32>> {
-    self.underlying.lock().unwrap().ray_intersect(ray, max_dist)
+    let transformed_ray = ray.get_transformed(self.get_collider_coord_matrix());
+    // println!("Transformed ray for sdf: {:?} is {:?}", self.underlying.lock().unwrap(), transformed_ray);
+    self.underlying.lock().unwrap().ray_intersect(&transformed_ray, max_dist)
   }
 
   pub fn get_collisions(&self) -> Vec<&Collision> {

@@ -15,6 +15,31 @@ pub struct ModelDims {
   pub depth: Option<f32>
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderSettings {
+  pub instances: usize,
+  pub opacities: Option<Vec<f32>>,
+  pub dims: Option<Vec<ModelDims>>,
+  pub transforms: Option<Vec<ModelTransform>>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderInstance {
+  pub transform: ModelTransform,
+  pub opacity: f32,
+  pub scale: Vector3<f32>
+}
+
+#[derive(PartialEq, Hash, Clone, Eq, Debug)]
+pub struct RenderableModel {
+  pub index: u32,
+  component: ComponentKey,
+  filename: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderableModelWithSettings(RenderableModel, RenderSettings);
+
 impl ModelDims {
   pub fn new(width: f32, height: f32, depth: f32) -> Self {
     Self {
@@ -69,21 +94,6 @@ impl ModelDims {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct RenderSettings {
-  pub instances: usize,
-  pub opacities: Option<Vec<f32>>,
-  pub dims: Option<Vec<ModelDims>>,
-  pub transforms: Option<Vec<ModelTransform>>
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct RenderInstance {
-  pub transform: ModelTransform,
-  pub opacity: f32,
-  pub scale: Vector3<f32>
-}
-
 impl RenderSettings {
   pub fn default() -> RenderSettings {
     Self {
@@ -114,16 +124,6 @@ impl RenderSettings {
     out
   }
 }
-
-#[derive(PartialEq, Hash, Clone, Eq, Debug)]
-pub struct RenderableModel {
-  pub index: u32,
-  component: ComponentKey,
-  filename: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct RenderableModelWithSettings(RenderableModel, RenderSettings);
 
 impl RenderableModel {
   pub fn new(index: u32, key: ComponentKey, filename: &str) -> Self {

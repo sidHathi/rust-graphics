@@ -45,7 +45,7 @@ impl Ray {
     focal_len: f32,
   ) -> Self {
     let origin = eye;
-    let direction = ((-focal_len * w) + screen_coord.x * u + screen_coord.y * v).normalize();
+    let direction = ((-focal_len * w) - screen_coord.x * u - screen_coord.y * v).normalize();
     Self {
       origin: Point3::from_vec(origin),
       direction

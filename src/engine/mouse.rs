@@ -3,8 +3,9 @@ use wgpu::SurfaceConfiguration;
 
 use crate::{engine::{collisions::CollisionManager, events::{Event, EventData, EventKey, EventManager}}, graphics::{Camera, Projection}};
 
-use super::raycasting::{RayIntersect, Ray};
+use super::{debug::DebugLine, raycasting::{Ray, RayIntersect}, Scene};
 
+#[derive(Clone)]
 pub struct Mouse {
   ray: Option<Ray>,
   max_dist: f32,
@@ -38,7 +39,9 @@ impl Mouse {
       return
     }
     let focal_len = 1. / (proj.get_fovy()/2.).tan();
-    let scaled_pos = Vector2::new(2. * new_pos.unwrap().x / config.width as f32, 2. * new_pos.unwrap().y/config.height as f32);
+    let width = config.width as f32;
+    let height = config.height as f32;
+    let scaled_pos = Vector2::new( 2. * new_pos.unwrap().x / width - 1.,  2. * new_pos.unwrap().y/height - 1.);
     let (sin_pitch, cos_pitch) = camera.pitch.0.sin_cos();
     let (sin_yaw, cos_yaw) = camera.yaw.0.sin_cos();
     let eye = camera.position.to_vec();
@@ -64,6 +67,14 @@ impl Mouse {
       let next_intersect = intersections.pop();
       self.last_intersect = self.closest_intersect.clone();
       self.closest_intersect = next_intersect;
+    }
+  }
+
+  pub fn draw_ray(&self, scene: &mut Scene) {
+    if let Some(ray_safe) = self.ray {
+      let line = DebugLine::new(ray_safe.origin.to_vec(), (ray_safe.origin + ray_safe.direction * 1000.).to_vec(), [1., 1., 1.]);
+      println!("Drawing line: {:?}", line);
+      scene.draw_debug_line(&line);
     }
   }
 

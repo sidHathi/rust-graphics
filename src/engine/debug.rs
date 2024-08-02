@@ -10,3 +10,5 @@ pub use debug_renderer::{
   DrawDebugRenderables
 };
 pub use debug_line::DebugLine;
+pub use line_pipeline::get_line_render_pipeline;
+pub use debug_vertex::DebugVertex;

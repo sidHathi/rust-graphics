@@ -1,12 +1,12 @@
-use std::{collections::HashMap, fmt::Debug, sync::{Arc, Mutex}};
+use std::{borrow::Borrow, collections::HashMap, fmt::Debug, sync::{Arc, Mutex}};
 
 use cgmath::{Rotation3, Vector2};
 use winit::{event::{ElementState, KeyboardInput, MouseButton, WindowEvent}, window::Window};
 use wgpu::{util::DeviceExt, BindGroupLayout};
 
-use crate::graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture};
+use crate::{debug::DebugVertex, engine::debug::get_line_render_pipeline, graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture}};
 
-use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugRenderPipelineType, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderPipelineType, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
 
 // The Scene struct contains the data needed to render the wgpu scene
 // It manages the camera, lighting and i/o. It also handles the operation
@@ -260,7 +260,7 @@ impl Scene {
     // pipline init/config
     let render_pipeline = {
       let shader = wgpu::ShaderModuleDescriptor {
-          label: Some("Normal Shader"),
+          label: Some("Model Shader"),
           source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
       };
       get_render_pipeline(
@@ -275,16 +275,43 @@ impl Scene {
       )
     };
 
+
+    let line_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+      label: Some("Line Render Pipeline Layout"),
+      bind_group_layouts: &[
+        &camera_bind_group_layout,
+      ],
+      push_constant_ranges: &[],
+    });
+    // pipline init/config
+    let line_render_pipeline = {
+      let shader = wgpu::ShaderModuleDescriptor {
+          label: Some("Debug Line Shader"),
+          source: wgpu::ShaderSource::Wgsl(include_str!("debug/debug_line_shader.wgsl").into()),
+      };
+      get_line_render_pipeline(
+        &device,
+        &line_render_pipeline_layout,
+        config.format,
+        Some(Texture::DEPTH_FORMAT),
+        &[DebugVertex::desc()],
+        shader,
+        "vs_main", 
+        "fs_main"
+      )
+    };
+
     // model store, component store, state, events, collisions, initialized here
     let model_renderer = ModelRenderer::new();
-    let mut components = ComponentStore::new();
+    let components = ComponentStore::new();
     let app_state = create_app_state();
     let event_manager = EventManager::new();
     let collision_manager = CollisionManager::new();
     let raycast_manager = RaycastManager::new();
     let mouse = Mouse::new(10000.);
     let debug_renderer = DebugRenderer::new();
-    let debug_render_pipelines = HashMap::new();
+    let mut debug_render_pipelines = HashMap::new();
+    debug_render_pipelines.insert(DebugRenderPipelineType::Linear, line_render_pipeline);
 
     let mut scene = Self {
       window,
@@ -396,6 +423,7 @@ impl Scene {
     // trigger any event callbacks:
     self.event_manager.update(dt);
     self.app_state.update(dt);
+    self.mouse.clone().draw_ray(self);
 
     self.event_manager.trigger_callbacks(&mut self.components);
     let _ = self.app_state.trigger_callbacks(&mut self.components);
@@ -484,7 +512,7 @@ impl Scene {
 
       use crate::engine::debug::DrawDebugRenderables;
       for (key, val) in self.debug_render_pipelines.iter() {
-        render_pass.draw_debug_renderables(&self.debug_renderer, key.clone(), &val, &self.camera_bind_group);
+        render_pass.draw_debug_renderables(&self.debug_renderer, key.clone(), val, &self.camera_bind_group);
       }
     }
 
@@ -510,5 +538,9 @@ impl Scene {
     // needs to position/rotate the model appropriately too
     self.model_renderer.render(model, render_settings.unwrap_or(RenderSettings::default()), &self.queue, &self.device)
     // self.model_renderer.render_from_cache(model)
+  }
+
+  pub fn draw_debug_line(&mut self, line: &DebugLine) {
+    self.debug_renderer.render_debug_obj(line, &self.device, &self.queue)
   }
 }

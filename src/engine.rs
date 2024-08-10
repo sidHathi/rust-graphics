@@ -16,5 +16,6 @@ mod renderable_model;
 mod raycasting;
 mod mouse;
 mod debug;
+mod text;
 
 pub use scene::Scene;

@@ -28,7 +28,7 @@ impl Ray {
     v: Vector3<f32>,
     w: Vector3<f32>
   ) -> Self {
-    let origin = eye + screen_coord.x * u + screen_coord.y * v;
+    let origin = eye - screen_coord.x * u - screen_coord.y * v;
     let direction = (-1. * w).normalize();
     Self {
       origin: Point3::from_vec(origin),

@@ -81,8 +81,10 @@ impl Component {
   // render the component
   pub fn render(&self, scene: &mut Scene, transform: Option<ComponentTransform>) -> Result<(), EngineError> {
     scene.model_renderer.start_component_render(transform, self.key);
+    scene.text_renderer.start_component_render(transform.unwrap_or(ComponentTransform::default()));
     let res = self.underlying.lock().unwrap().render(scene);
     scene.model_renderer.end_component_render();
+    scene.text_renderer.end_component_render();
     res
   }
 

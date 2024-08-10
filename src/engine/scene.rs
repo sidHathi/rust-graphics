@@ -6,7 +6,7 @@ use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::{debug::DebugVertex, engine::debug::get_line_render_pipeline, graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture}};
 
-use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderPipelineType, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, transforms::ModelTransform};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderPipelineType, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, text::{CGText, TextRenderer}, transforms::ModelTransform};
 
 // The Scene struct contains the data needed to render the wgpu scene
 // It manages the camera, lighting and i/o. It also handles the operation
@@ -37,6 +37,7 @@ pub struct Scene {
   pub model_renderer: ModelRenderer,
   render_pipeline_layout: wgpu::PipelineLayout,
   render_pipeline: wgpu::RenderPipeline,
+  staging_belt: wgpu::util::StagingBelt,
   pub app: Option<Component>, // top level component
   pub app_state: Store, // state manager
   pub event_manager: EventManager, // event manager
@@ -45,6 +46,7 @@ pub struct Scene {
   pub mouse: Mouse,
   pub debug_renderer: DebugRenderer,
   pub debug_render_pipelines: HashMap<DebugRenderPipelineType, wgpu::RenderPipeline>,
+  pub text_renderer: TextRenderer,
 }
 
 impl Scene {
@@ -300,6 +302,7 @@ impl Scene {
         "fs_main"
       )
     };
+    let mut staging_belt = wgpu::util::StagingBelt::new(1024);
 
     // model store, component store, state, events, collisions, initialized here
     let model_renderer = ModelRenderer::new();
@@ -312,6 +315,7 @@ impl Scene {
     let debug_renderer = DebugRenderer::new();
     let mut debug_render_pipelines = HashMap::new();
     debug_render_pipelines.insert(DebugRenderPipelineType::Linear, line_render_pipeline);
+    let text_renderer = TextRenderer::new(&device, &queue, &config, surface_format, &camera_bind_group_layout, &light_bind_group_layout);
 
     let mut scene = Self {
       window,
@@ -337,6 +341,7 @@ impl Scene {
       light_render_pipeline,
       render_pipeline,
       render_pipeline_layout,
+      staging_belt,
       mouse_pressed: false,
       clear_color: (0.1, 0.2, 0.3, 1.),
       app: None,
@@ -346,7 +351,8 @@ impl Scene {
       raycast_manager,
       mouse,
       debug_renderer,
-      debug_render_pipelines
+      debug_render_pipelines,
+      text_renderer
     };
 
     println!("Scene initialized");
@@ -402,6 +408,9 @@ impl Scene {
         ..
       } => {
         self.mouse_pressed = *state == ElementState::Pressed;
+        if self.mouse_pressed {
+          self.mouse.handle_press(&mut self.event_manager);
+        }
         true
       },
       WindowEvent::CursorMoved { 
@@ -509,6 +518,9 @@ impl Scene {
         render_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
         render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
       }
+      
+      use crate::engine::text::DrawText;
+      render_pass.draw_text(&self.text_renderer, &self.device, &self.queue, &self.config, &self.camera_bind_group, &self.light_bind_group);
 
       use crate::engine::debug::DrawDebugRenderables;
       for (key, val) in self.debug_render_pipelines.iter() {
@@ -516,11 +528,13 @@ impl Scene {
       }
     }
 
+    self.staging_belt.finish();
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
     // clear model render list
     self.model_renderer.clear();
     self.debug_renderer.reset();
+    self.text_renderer.reset();
     Ok(())
   }
 
@@ -542,5 +556,9 @@ impl Scene {
 
   pub fn draw_debug_line(&mut self, line: &DebugLine) {
     self.debug_renderer.render_debug_obj(line, &self.device, &self.queue)
+  }
+
+  pub fn draw_text(&mut self, text: &CGText) {
+    self.text_renderer.render_text(text.clone())
   }
 }

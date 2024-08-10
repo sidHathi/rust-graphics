@@ -15,36 +15,6 @@ pub trait Interpolates {
   fn interpolate(start: Self, end: Self, t: f32) -> Self;
 }
 
-impl Interpolates for State {
-  fn interpolate(start: Self, end: Self, t: f32) -> Self {
-    match (start.clone(), end.clone()) {
-      (State::Integer(sv), State::Integer(ev)) => {
-        State::Integer((ev - sv) * t as i32)
-      },
-      (State::Float(sv), State::Float(ev)) => {
-        State::Float((ev - sv) * t)
-      },
-      (State::Quaternion(sv), State::Quaternion(ev)) => {
-        State::Quaternion(sv.slerp(ev, t))
-      },
-      (State::Vector3(sv), State::Vector3(ev)) => {
-        State::Vector3(Vector3::new(
-          (ev.x - sv.x) * t, 
-          (ev.y - sv.y) * t, 
-          (ev.z - sv.z) * t
-        ))
-      },
-      _ => {
-        if t >= 0.5 {
-          start
-        } else {
-          end
-        }
-      }
-    }
-  }
-}
-
 impl StateInterpolator {
   pub fn new(key: String, start: State, end: State, time: f64) -> Option<Self> {
     if !start.same_type(&end) { return None }

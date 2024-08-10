@@ -24,6 +24,8 @@ tobj = { version = "3.2.1", features = [
 reqwest = { version = "0.11" }
 cfg-if = "1"
 instant = "0.1"
+glyph_brush = "0.7.9"
+glyph_brush_layout = "0.2.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 

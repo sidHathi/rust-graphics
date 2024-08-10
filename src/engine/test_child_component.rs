@@ -16,6 +16,7 @@ pub struct TestChildComponent {
   should_set_state: bool,
   collider: Option<Arc<RwLock<Collider>>>,
   mem: Option<Arc<Mutex<Self>>>,
+  opacity: f32,
   pub should_interp_state: bool,
 }
 
@@ -42,6 +43,8 @@ impl ComponentFunctions for TestChildComponent {
     self.collider = Some(scene.collision_manager.add_component_collider(collision_boundary, key, None));
 
     let _ = self.add_event_listener(scene, &key, &EventKey::KeyboardEvent);
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverStartEvent(self.key));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverEndEvent(self.key));
     if let Some(mem_safe) = self.mem.clone() {
       Component::exec_async(mem_safe, Self::wait_then_interpolate, ());
     }
@@ -79,7 +82,7 @@ impl ComponentFunctions for TestChildComponent {
     
     self.model.as_ref().unwrap()
       .transform(model_transform)
-      .opacity(0.5)
+      .opacity(self.opacity)
       .dims(ModelDims::new(10., 10., 10.))
       .render(scene)
   }
@@ -96,6 +99,7 @@ impl TestChildComponent {
       should_set_state: false,
       collider: None,
       mem: None,
+      opacity: 0.5,
       should_interp_state: false
     };
     let mem = Arc::new(Mutex::new(new_self));
@@ -120,6 +124,12 @@ impl EventListener for TestChildComponent {
           if state == ElementState::Pressed {
             self.should_set_state = true;
           }
+        },
+        EventData::MouseHoverStartEvent { .. } => {
+          self.opacity = 1.;
+        },
+        EventData::MouseHoverEndEvent { .. } => {
+          self.opacity = 0.5;
         },
         _ => {}
       }

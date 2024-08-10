@@ -2,7 +2,7 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, state::{State, StateListener}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
+use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, text::CGText, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
 use cgmath::{InnerSpace, Point3, Quaternion, Rad, Rotation, Rotation3, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
@@ -21,6 +21,8 @@ pub struct TestComponent {
   active: bool,
   mem: Option<Arc<Mutex<Self>>>,
   rotating: bool,
+  jumping: bool,
+  opacity: f32
 }
 
 #[async_trait(?Send)]
@@ -59,7 +61,9 @@ impl ComponentFunctions for TestComponent {
     let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverStartEvent(self.key.clone()));
     let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverEndEvent(self.key.clone()));
     let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoveringEvent(self.key.clone()));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseSelectEvent(self.key.clone()));
     let _ = self.add_state_listener(scene, &key, "parent_rotation".into());
+    let _ = scene.app_state.set_state("parent_y_offset", State::Float(0.));
 
     if let Some(mem_safe) = self.mem.clone() {
       Component::exec_async(mem_safe.clone(), Self::set_rotation_after_wait, ());
@@ -80,6 +84,23 @@ impl ComponentFunctions for TestComponent {
         self.model_pos.as_mut().unwrap().set_rot(Quaternion::new(1., 0., 0., 0.));
       }
     }
+
+    if self.jumping && !scene.app_state.get_interpolating_keys().contains("parent_y_offset") && scene.app_state.get_state("parent_y_offset").unwrap().get_float().unwrap() < 5. {
+      scene.app_state.interpolate("parent_y_offset", State::Float(5.), 1.);
+    }
+    
+    if self.jumping && !scene.app_state.get_interpolating_keys().contains("parent_y_offset") && scene.app_state.contains_key("parent_y_offset") && scene.app_state.get_state("parent_y_offset").unwrap().get_float().unwrap() >= 5. {
+      scene.app_state.interpolate("parent_y_offset", State::Float(0.), 1.);
+    }
+
+    if scene.app_state.contains_key("parent_y_offset") && self.jumping {
+      if let Some(y_offset) = scene.app_state.get_state("parent_y_offset").unwrap().get_float() {
+        if self.model_pos.is_none() {
+          self.model_pos = Some(ModelTransform::default());
+        }
+        self.model_pos.as_mut().unwrap().set_pos(Vector3::new(0., y_offset, 0.));
+      }
+    }
   }
 
   fn render(&self, scene: &mut Scene) -> Result<(), EngineError> {
@@ -97,12 +118,18 @@ impl ComponentFunctions for TestComponent {
       let res = model
         .transform(self.model_pos.clone().unwrap_or(ModelTransform::default()))
         .dims(ModelDims::new(20., 20., 20.))
+        .opacity(self.opacity)
         .render(scene);
 
       if let Err(e) = res {
           return Err(e);
       }
     }
+
+    CGText::new("this is text")
+      .transform(ModelTransform::local(Vector3 { x: -5., y: 5., z: -10. }, Quaternion::new(0., 0., 0., 0.)))
+      .font_size(200.)
+      .render(scene);
 
     if let Some(child_safe) = self.child.clone() {
       return child_safe.render(scene, Some(self.child_pos.clone()));
@@ -141,12 +168,18 @@ impl EventListener for TestComponent {
       },
       EventData::MouseHoverStartEvent { component, collider_idx, intersect_loc } => {
         println!("Handling mouse hover start event!");
+        self.opacity = 0.5;
       },
       EventData::MouseHoveringEvent { component, collider_idx, intersect_loc } => {
-        println!("Handling mouse hovering event!");
+        // println!("Handling mouse hovering event!");
       },
       EventData::MouseHoverEndEvent { component, collider_idx } => {
         println!("Handling mouse hover end event!");
+        self.opacity = 1.;
+      },
+      EventData::MouseSelectEvent { .. } => {
+        println!("Handling mouse hover select event!");
+        self.jumping = !self.jumping;
       }
       _ => ()
     }
@@ -178,6 +211,8 @@ impl TestComponent {
       collider: None,
       mem: None,
       rotating: false,
+      opacity: 1.,
+      jumping: false,
     };
     let mem = Arc::new(Mutex::new(new_self));
     mem.lock().unwrap().mem = Some(mem.clone());

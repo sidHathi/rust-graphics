@@ -1,4 +1,4 @@
-pub fn get_render_pipeline(
+pub fn get_text_render_pipeline(
   device: &wgpu::Device, 
   render_pipeline_layout: &wgpu::PipelineLayout,
   color_format: wgpu::TextureFormat,
@@ -11,7 +11,7 @@ pub fn get_render_pipeline(
   let shader = device.create_shader_module(shader);
 
   device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-    label: Some("Render Pipeline"),
+    label: Some("Text Render Pipeline"),
     layout: Some(&render_pipeline_layout),
     vertex: wgpu::VertexState {
       module: &shader,
@@ -21,28 +21,17 @@ pub fn get_render_pipeline(
     fragment: Some(wgpu::FragmentState { // 3.
       module: &shader,
       entry_point: frag_entry,
-      targets: &[Some(wgpu::ColorTargetState { // 4.
-        format: color_format,
-        blend: Some(wgpu::BlendState {
-          color: wgpu::BlendComponent {
-            src_factor: wgpu::BlendFactor::SrcAlpha,
-            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-            operation: wgpu::BlendOperation::Add,
-          },
-          alpha: wgpu::BlendComponent {
-            src_factor: wgpu::BlendFactor::One,
-            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-            operation: wgpu::BlendOperation::Add,
-          },
-        }),
-        write_mask: wgpu::ColorWrites::ALL,
+      targets: &[Some(wgpu::ColorTargetState {
+          format: color_format,
+          blend: Some(wgpu::BlendState::REPLACE),
+          write_mask: wgpu::ColorWrites::ALL,
       })],
     }),
     primitive: wgpu::PrimitiveState { 
-      topology: wgpu::PrimitiveTopology::TriangleList, 
+      topology: wgpu::PrimitiveTopology::TriangleStrip, 
       strip_index_format: None, 
       front_face: wgpu::FrontFace::Ccw, 
-      cull_mode: Some(wgpu::Face::Back), 
+      cull_mode: None, 
       unclipped_depth: false, 
       polygon_mode: wgpu::PolygonMode::Fill, 
       conservative: false,

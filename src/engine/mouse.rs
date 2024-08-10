@@ -38,7 +38,7 @@ impl Mouse {
       self.pressed = pressed;
       return
     }
-    let focal_len = 1. / (proj.get_fovy()/2.).tan();
+    let focal_len = 1. / (2.*(proj.get_fovy()/2.).tan());
     let width = config.width as f32;
     let height = config.height as f32;
     let scaled_pos = Vector2::new( 2. * new_pos.unwrap().x / width - 1.,  2. * new_pos.unwrap().y/height - 1.);
@@ -56,6 +56,7 @@ impl Mouse {
     let v = up.normalize();
 
     self.ray = Some(Ray::gen_perspective(scaled_pos, eye, u, v, w, focal_len));
+    // self.ray = Some(Ray::gen_ortho(scaled_pos, eye, u, v, w));
     // println!("Updating mouse state with new ray: {:?}", self.ray);
     self.pressed = pressed;
   }
@@ -73,62 +74,40 @@ impl Mouse {
   pub fn draw_ray(&self, scene: &mut Scene) {
     if let Some(ray_safe) = self.ray {
       let line = DebugLine::new(ray_safe.origin.to_vec(), (ray_safe.origin + ray_safe.direction * 1000.).to_vec(), [1., 1., 1.]);
-      println!("Drawing line: {:?}", line);
+      // println!("Drawing line: {:?}", line);
       scene.draw_debug_line(&line);
     }
   }
 
   pub fn trigger_mouse_events(&self, event_manager: &mut EventManager) {
     if let Some(intersect) = self.closest_intersect {
-      if self.pressed {
+      if self.last_intersect.is_none() || intersect.collider_idx != self.last_intersect.unwrap().collider_idx {
         event_manager.handle_event(Event {
-          key: EventKey::MouseSelectEvent(intersect.component),
-          data: EventData::MouseSelectEvent {
+          key: EventKey::MouseHoverStartEvent(intersect.component),
+          data: EventData::MouseHoverStartEvent {
             component: intersect.component.clone(),
             collider_idx: intersect.collider_idx,
             intersect_loc: intersect.loc.clone()
           }
         });
         if let Some(last) = self.last_intersect {
-          if last.collider_idx != intersect.collider_idx {
-            event_manager.handle_event(Event {
-              key: EventKey::MouseHoverEndEvent(last.component),
-              data: EventData::MouseHoverEndEvent {
-                component: last.component.clone(),
-                collider_idx: last.collider_idx,
-              }
-            });
-          }
-        }
-      } else {
-        if self.last_intersect.is_none() || intersect.collider_idx != self.last_intersect.unwrap().collider_idx {
           event_manager.handle_event(Event {
-            key: EventKey::MouseHoverStartEvent(intersect.component),
-            data: EventData::MouseHoverStartEvent {
-              component: intersect.component.clone(),
-              collider_idx: intersect.collider_idx,
-              intersect_loc: intersect.loc.clone()
+            key: EventKey::MouseHoverEndEvent(last.component),
+            data: EventData::MouseHoverEndEvent {
+              component: last.component.clone(),
+              collider_idx: last.collider_idx,
             }
           });
-          if let Some(last) = self.last_intersect {
-            event_manager.handle_event(Event {
-              key: EventKey::MouseHoverEndEvent(last.component),
-              data: EventData::MouseHoverEndEvent {
-                component: last.component.clone(),
-                collider_idx: last.collider_idx,
-              }
-            });
-          }
         }
-        event_manager.handle_event(Event {
-          key: EventKey::MouseHoveringEvent(intersect.component),
-          data: EventData::MouseHoveringEvent {
-            component: intersect.component.clone(),
-            collider_idx: intersect.collider_idx,
-            intersect_loc: intersect.loc.clone()
-          }
-        });
       }
+      event_manager.handle_event(Event {
+        key: EventKey::MouseHoveringEvent(intersect.component),
+        data: EventData::MouseHoveringEvent {
+          component: intersect.component.clone(),
+          collider_idx: intersect.collider_idx,
+          intersect_loc: intersect.loc.clone()
+        }
+      });
     } else {
       if let Some(last) = self.last_intersect {
         event_manager.handle_event(Event {
@@ -139,6 +118,19 @@ impl Mouse {
           }
         });
       }
+    }
+  }
+
+  pub fn handle_press(&self, event_manager: &mut EventManager) {
+    if let Some(intersect) = self.closest_intersect {
+      event_manager.handle_event(Event {
+        key: EventKey::MouseSelectEvent(intersect.component),
+        data: EventData::MouseSelectEvent {
+          component: intersect.component.clone(),
+          collider_idx: intersect.collider_idx,
+          intersect_loc: intersect.loc.clone()
+        }
+      });
     }
   }
 }

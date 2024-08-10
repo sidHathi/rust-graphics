@@ -41,6 +41,10 @@ impl Store {
     Err(EngineError::Custom("State set failed for unknown reason".into()))
   }
 
+  pub fn contains_key(&self, key: &str) -> bool {
+    self.state_map.contains_key(key)
+  }
+
   pub fn get_state(&self, key: &str) -> Option<&State> {
     self.state_map.get(key)
   }
@@ -95,7 +99,7 @@ impl Store {
   }
 
   pub fn interpolate(&mut self, key: &str, val: State, time: f64) {
-    if self.state_map.contains_key(key) {
+    if self.state_map.contains_key(key) && !self.interpolators.contains_key(key) {
       let interpolator = StateInterpolator::new(key.into(), self.state_map.get(key).unwrap().clone(), val, time);
       if let Some(valid_interp) = interpolator {
         self.interpolators.insert(key.into(), valid_interp);
@@ -126,5 +130,9 @@ impl Store {
     for intp_key in complete_interpolators {
       self.interpolators.remove(&intp_key);
     }
+  }
+
+  pub fn get_interpolating_keys(&self) -> HashSet<&str> {
+    self.interpolators.keys().into_iter().map(|s| s.as_str()).collect()
   }
 }

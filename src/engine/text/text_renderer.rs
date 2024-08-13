@@ -4,7 +4,7 @@ use cgmath::{Matrix4, SquareMatrix, Vector3, Vector4};
 use wgpu::util::DeviceExt;
 use glyph_brush::{ab_glyph::FontArc, BrushError, BuiltInLineBreaker, FontId, GlyphBrush, GlyphBrushBuilder, Rectangle, Section, Text};
 
-use crate::{engine::{errors::EngineError, text::text_vertex::TextModelMat, transform_queue::TransformQueue, transforms::{ComponentTransform, GlobalTransform}}, graphics::{get_render_pipeline, Texture}};
+use crate::{engine::{errors::EngineError, text::text_vertex::TextModelData, transform_queue::TransformQueue, transforms::{ComponentTransform, GlobalTransform}}, graphics::{get_render_pipeline, Texture}};
 
 use super::{cg_text::CGText, font::FontFace, text_vertex::TextVertex};
 
@@ -68,7 +68,8 @@ impl TextRenderer {
       }
     }
 
-    let model_init = TextModelMat { model_matrix: Matrix4::identity().into() };
+    // initialize buffers
+    let model_init = TextModelData { model_matrix: Matrix4::identity().into(), opacity: 1. };
     let text_model_buffer = device.create_buffer_init(
       &wgpu::util::BufferInitDescriptor {
         label: Some("Text model matrix"),
@@ -190,7 +191,7 @@ impl TextRenderer {
         &render_pipeline_layout,
         config.format,
         Some(Texture::DEPTH_FORMAT),
-        &[TextVertex::desc(), TextModelMat::desc()],
+        &[TextVertex::desc(), TextModelData::desc()],
         shader,
         "vs_main", 
         "fs_main"
@@ -221,23 +222,14 @@ impl TextRenderer {
     queue: &wgpu::Queue,
     config: &wgpu::SurfaceConfiguration
   ) -> Result<(u32, u32), BrushError> {
-    let section = Section {
-      screen_position: (0.0, 0.0),
-      bounds: (f32::INFINITY, f32::INFINITY),
-      text: vec![
-          text.text.get_glyph_text(),
-      ],
-        layout: glyph_brush::Layout::SingleLine { 
-          line_breaker: BuiltInLineBreaker::UnicodeLineBreaker, 
-          h_align: glyph_brush_layout::HorizontalAlign::Left,
-          v_align: glyph_brush_layout::VerticalAlign::Top,
-        },
-      ..Section::default()
-    };
+    let section = text.text.get_glyph_section();
 
-    let scaling_mat = Matrix4::from_scale(0.05);
+    let scaling_mat = Matrix4::from_scale(0.02);
     let model_matrix: [[f32; 4]; 4] = (text.global_transform.as_matrix() * scaling_mat).into();
-    queue.write_buffer(&self.text_model_buffer, 0, bytemuck::cast_slice(&[TextModelMat { model_matrix }]));
+    queue.write_buffer(&self.text_model_buffer, 0, bytemuck::cast_slice(&[TextModelData { 
+      model_matrix,
+      opacity: text.text.opacity
+     }]));
 
     let text_vertices: Mutex<Vec<TextVertex>> = Mutex::new(vec![]);
     let text_indices: Mutex<Vec<u32>> = Mutex::new(vec![]);

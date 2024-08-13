@@ -12,8 +12,9 @@ pub struct TextVertex {
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
-pub struct TextModelMat{
-  pub model_matrix: [[f32; 4]; 4]
+pub struct TextModelData {
+  pub model_matrix: [[f32; 4]; 4],
+  pub opacity: f32
 }
 
 impl TextVertex {
@@ -46,10 +47,10 @@ impl Vertex for TextVertex {
   }
 }
 
-impl Vertex for TextModelMat {
+impl Vertex for TextModelData {
   fn desc() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
-      array_stride: mem::size_of::<TextModelMat>() as wgpu::BufferAddress,
+      array_stride: mem::size_of::<TextModelData>() as wgpu::BufferAddress,
       step_mode: wgpu::VertexStepMode::Instance,
       attributes: &[
         wgpu::VertexAttribute {
@@ -71,6 +72,11 @@ impl Vertex for TextModelMat {
           offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
           shader_location: 5,
           format: wgpu::VertexFormat::Float32x4,
+        },
+        wgpu::VertexAttribute {
+          offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+          shader_location: 6,
+          format: wgpu::VertexFormat::Float32,
         },
       ]
     }

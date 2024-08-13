@@ -8,5 +8,10 @@ pub use text_renderer:: {
   TextRenderer,
   DrawText
 };
-pub use cg_text::CGText;
+pub use cg_text::{
+  CGText,
+  TextAlignment,
+  TextWrapStyle,
+  VerticalTextAlignment,
+};
 pub use font::FontFace;

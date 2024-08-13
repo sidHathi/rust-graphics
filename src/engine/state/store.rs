@@ -61,7 +61,6 @@ impl Store {
     return Ok(())
   }
 
-
   pub fn trigger_callbacks(&mut self, components: &mut ComponentStore) -> Result<(), EngineError> {
     for (key, callback_tuples) in self.triggered_functions.iter() {
       let component: &mut dyn StateListener = components.get_mut(key).unwrap();
@@ -70,6 +69,7 @@ impl Store {
         if used_keys.contains(state_key) {
           continue;
         }
+
         used_keys.insert(state_key.clone());
         let val_opt = self.state_map.get(state_key);
         if let Some(val) = val_opt {

@@ -2,7 +2,7 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, text::CGText, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
+use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, text::{CGText, TextAlignment, TextWrapStyle}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
 use cgmath::{InnerSpace, Point3, Quaternion, Rad, Rotation, Rotation3, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
@@ -128,7 +128,11 @@ impl ComponentFunctions for TestComponent {
 
     CGText::new("this is text")
       .transform(ModelTransform::local(Vector3 { x: -5., y: 5., z: -10. }, Quaternion::new(0., 0., 0., 0.)))
-      .font_size(200.)
+      .font_size(10.)
+      .wrap(TextWrapStyle::Wrap)
+      .max_width(10.)
+      .align(TextAlignment::Center)
+      .opacity(0.5)
       .render(scene);
 
     if let Some(child_safe) = self.child.clone() {

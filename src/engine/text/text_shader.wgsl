@@ -23,12 +23,15 @@ struct ModelInput {
   @location(3) model_matrix_1: vec4<f32>,
   @location(4) model_matrix_2: vec4<f32>,
   @location(5) model_matrix_3: vec4<f32>,
-  @location(6) opacity: f32,
+  @location(6) text_color: vec3<f32>,
+  @location(7) opacity: f32,
 }
 
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
   @location(0) tex_coords: vec2<f32>,
+  @location(1) text_color: vec3<f32>,
+  @location(2) opacity: f32,
 }
 
 @vertex
@@ -43,9 +46,12 @@ fn vs_main(
     model.model_matrix_2,
     model.model_matrix_3,
   );
+
   let world_position: vec4<f32> = model_matrix * vec4<f32>(vert.position, 1.0);
   out.clip_position = camera.view_proj * world_position;
   out.tex_coords = vec2<f32>(vert.tex_coords.x, vert.tex_coords.y);
+  out.opacity = model.opacity;
+  out.text_color = model.text_color;
   return out;
 }
 
@@ -59,7 +65,7 @@ fn fs_main(
   in: VertexOutput
 ) -> @location(0) vec4<f32> {
   // return vec4<f32>(0., 0., 0., 1.);
-  return vec4<f32>(0., 0., 0., textureSample(t_diffuse, s_diffuse, in.tex_coords).r);
+  return vec4<f32>(in.text_color.x, in.text_color.y, in.text_color.z, textureSample(t_diffuse, s_diffuse, in.tex_coords).r * in.opacity);
   // let sampled_val = textureSample(t_diffuse, s_diffuse, in.tex_coords);
   // return vec4<f32>(sampled_val.r, sampled_val.r, sampled_val.r, 1.0);
 }

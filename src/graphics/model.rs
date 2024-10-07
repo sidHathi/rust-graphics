@@ -1,5 +1,7 @@
 use std::mem;
 use std::ops::Range;
+use wgpu::RenderPass;
+
 use super::texture::Texture;
 
 #[derive(Debug)]
@@ -303,3 +305,136 @@ impl<'a, 'b> DrawLight<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     }
   }
 }
+
+pub trait ShadowMapModel<'a> {
+  fn shadow_map_mesh(
+    &mut self, 
+    mesh: &'a Mesh, 
+    light_bind_broup: &'a wgpu::BindGroup,
+  );
+
+  fn shadow_map_mesh_instanced(
+    &mut self,
+    mesh: &'a Mesh,
+    instances: std::ops::Range<u32>,
+    light_bind_group: &'a wgpu::BindGroup
+  );
+
+  fn shadow_map_model(
+    &mut self, 
+    model: &'a Model, 
+    light_bind_group: &'a wgpu::BindGroup
+  );
+  
+  fn shadow_map_model_instanced(
+    &mut self,
+    model: &'a Model,
+    instances: Range<u32>,
+    light_bind_group: &'a wgpu::BindGroup
+  );
+}
+
+impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
+  fn shadow_map_mesh(
+    &mut self, 
+    mesh: &'b Mesh,  
+    light_bind_group: &'b wgpu::BindGroup,
+  ) {
+    self.shadow_map_mesh_instanced(mesh, 0..1, light_bind_group)
+  }
+
+  fn shadow_map_mesh_instanced(
+    &mut self,
+    mesh: &'b Mesh,
+    instances: std::ops::Range<u32>,
+    light_bind_group: &'b wgpu::BindGroup
+  ) {
+    self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+    self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+    self.set_bind_group(0, light_bind_group, &[]);
+    self.draw_indexed(0..mesh.num_elements, 0, instances);
+  }
+
+  fn shadow_map_model(
+    &mut self, 
+    model: &'b Model, 
+    light_bind_group: &'b wgpu::BindGroup
+  ) {
+    self.shadow_map_model_instanced(model, 0..1, light_bind_group)
+  }
+
+  fn shadow_map_model_instanced(
+    &mut self,
+    model: &'b Model,
+    instances: Range<u32>,
+    light_bind_group: &'b wgpu::BindGroup
+  ) {
+    for mesh in &model.meshes {
+      self.shadow_map_mesh_instanced(mesh, instances.clone(), light_bind_group);
+    }
+  }
+}
+
+// pub trait DrawShadowedModel<'a> {
+//   fn draw_shadowed_mesh(
+//     &mut self, 
+//     mesh: &'a Mesh, 
+//     light_bind_broup: &'a wgpu::BindGroup,
+//   );
+
+//   fn draw_shadowed_mesh_instanced(
+//     &mut self,
+//     mesh: &'a Mesh,
+//     instances: std::ops::Range<u32>,
+//     light_bind_group: &'a wgpu::BindGroup
+//   );
+
+//   fn draw_shadowed_model(
+//     &mut self, 
+//     model: &'a Model, 
+//     light_bind_group: &'a wgpu::BindGroup
+//   );
+  
+//   fn draw_shadowed_model_instanced(
+//     &mut self,
+//     model: &'a Model,
+//     instances: Range<u32>,
+//     light_bind_group: &'a wgpu::BindGroup
+//   );
+// }
+
+// impl<'a, 'b> DrawShadowedModel<'a> for RenderPass<'b> where 'b: 'a {
+//   fn draw_shadowed_mesh(
+//     &mut self, 
+//     mesh: &'a Mesh, 
+//     light_bind_broup: &'a wgpu::BindGroup,
+//   ) {
+//     todo!()
+//   }
+
+//   fn draw_shadowed_mesh_instanced(
+//     &mut self,
+//     mesh: &'a Mesh,
+//     instances: std::ops::Range<u32>,
+//     light_bind_group: &'a wgpu::BindGroup
+//   ) {
+//     todo!()
+//   }
+
+//   fn draw_shadowed_model(
+//     &mut self, 
+//     model: &'a Model, 
+//     light_bind_group: &'a wgpu::BindGroup
+//   ) {
+//     todo!()
+//   }
+
+//   fn draw_shadowed_model_instanced(
+//     &mut self,
+//     model: &'a Model,
+//     instances: Range<u32>,
+//     light_bind_group: &'a wgpu::BindGroup
+//   ) {
+//     todo!()
+//   }
+// }

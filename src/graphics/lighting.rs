@@ -27,7 +27,7 @@ pub fn get_light_bind_group_info(device: &wgpu::Device, buffer: &wgpu::Buffer) -
           binding: 0,
           visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
           ty: wgpu::BindingType::Buffer { 
-            ty:  wgpu::BufferBindingType::Uniform, 
+            ty: wgpu::BufferBindingType::Uniform, 
             has_dynamic_offset: false, 
             min_binding_size: None
           },

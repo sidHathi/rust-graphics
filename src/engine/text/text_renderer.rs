@@ -1,10 +1,11 @@
+use core::f32;
 use std::{collections::HashMap, hash::Hash, mem, sync::{Arc, Mutex, RwLock}};
 
 use cgmath::{Matrix4, SquareMatrix, Vector3, Vector4};
 use wgpu::util::DeviceExt;
-use glyph_brush::{ab_glyph::FontArc, BrushError, BuiltInLineBreaker, FontId, GlyphBrush, GlyphBrushBuilder, Rectangle, Section, Text};
+use glyph_brush::{ab_glyph::FontArc, BrushError, BuiltInLineBreaker, Color, FontId, GlyphBrush, GlyphBrushBuilder, Rectangle, Section, Text};
 
-use crate::{engine::{errors::EngineError, text::text_vertex::TextModelData, transform_queue::TransformQueue, transforms::{ComponentTransform, GlobalTransform}}, graphics::{get_render_pipeline, Texture}};
+use crate::{engine::{errors::EngineError, text::{text_vertex::TextModelData, VerticalTextAlignment}, transform_queue::TransformQueue, transforms::{ComponentTransform, GlobalTransform}}, graphics::{get_render_pipeline, Texture}};
 
 use super::{cg_text::CGText, font::FontFace, text_vertex::TextVertex};
 
@@ -69,7 +70,11 @@ impl TextRenderer {
     }
 
     // initialize buffers
-    let model_init = TextModelData { model_matrix: Matrix4::identity().into(), opacity: 1. };
+    let model_init = TextModelData { 
+      model_matrix: Matrix4::identity().into(),
+      color: [0., 0., 0.],
+      opacity: 1. 
+    };
     let text_model_buffer = device.create_buffer_init(
       &wgpu::util::BufferInitDescriptor {
         label: Some("Text model matrix"),
@@ -226,14 +231,18 @@ impl TextRenderer {
 
     let scaling_mat = Matrix4::from_scale(0.02);
     let model_matrix: [[f32; 4]; 4] = (text.global_transform.as_matrix() * scaling_mat).into();
+    let text_color = text.text.color;
     queue.write_buffer(&self.text_model_buffer, 0, bytemuck::cast_slice(&[TextModelData { 
       model_matrix,
+      color: [text_color.r as f32, text_color.g as f32, text_color.b as f32],
       opacity: text.text.opacity
      }]));
 
     let text_vertices: Mutex<Vec<TextVertex>> = Mutex::new(vec![]);
     let text_indices: Mutex<Vec<u32>> = Mutex::new(vec![]);
     let index_offset = Mutex::new(0);
+    let max_y_pos: RwLock<f32> = RwLock::new(f32::NEG_INFINITY);
+    let min_y_pos: RwLock<f32> = RwLock::new(f32::INFINITY);
 
     self.glyph_brush.lock().unwrap().queue(&section);
     let res = self.glyph_brush.lock().unwrap().process_queued(
@@ -266,27 +275,38 @@ impl TextRenderer {
         }
       },
       |vertex_data| {
+        println!("Y coords for text glyph {}, {}", vertex_data.pixel_coords.max.y, vertex_data.pixel_coords.min.y);
+        if vertex_data.pixel_coords.max.y > max_y_pos.read().unwrap().clone() {
+          *max_y_pos.write().unwrap() = vertex_data.pixel_coords.max.y;
+        } else if vertex_data.pixel_coords.max.y < min_y_pos.read().unwrap().clone() {
+          *min_y_pos.write().unwrap() = vertex_data.pixel_coords.max.y;
+        }
+        if vertex_data.pixel_coords.min.y > max_y_pos.read().unwrap().clone() {
+          *max_y_pos.write().unwrap() = vertex_data.pixel_coords.min.y;
+        } else if vertex_data.pixel_coords.min.y < min_y_pos.read().unwrap().clone() {
+          *min_y_pos.write().unwrap() = vertex_data.pixel_coords.min.y;
+        }
         let y_offset = vertex_data.pixel_coords.max.y - vertex_data.pixel_coords.min.y;
         let minX_scaled = vertex_data.pixel_coords.min.x;
         let maxX_scaled = vertex_data.pixel_coords.max.x;
-        let minY_scaled = vertex_data.pixel_coords.min.y + y_offset;
-        let maxY_scaled = vertex_data.pixel_coords.max.y + y_offset;
+        let minY_scaled = vertex_data.pixel_coords.min.y;
+        let maxY_scaled = vertex_data.pixel_coords.max.y;
         let quad_vertices = [
             TextVertex {
                 position: [minX_scaled, minY_scaled, 0.],
-                tex_coords: [vertex_data.tex_coords.min.x, vertex_data.tex_coords.max.y],
+                tex_coords: [vertex_data.tex_coords.min.x, vertex_data.tex_coords.min.y],
             },
             TextVertex {
                 position: [maxX_scaled, minY_scaled, 0.],
-                tex_coords: [vertex_data.tex_coords.max.x, vertex_data.tex_coords.max.y],
-            },
-            TextVertex {
-                position: [maxX_scaled, maxY_scaled, 0.],
                 tex_coords: [vertex_data.tex_coords.max.x, vertex_data.tex_coords.min.y],
             },
             TextVertex {
+                position: [maxX_scaled, maxY_scaled, 0.],
+                tex_coords: [vertex_data.tex_coords.max.x, vertex_data.tex_coords.max.y],
+            },
+            TextVertex {
                 position: [minX_scaled, maxY_scaled, 0.],
-                tex_coords: [vertex_data.tex_coords.min.x, vertex_data.tex_coords.min.y],
+                tex_coords: [vertex_data.tex_coords.min.x, vertex_data.tex_coords.max.y],
             },
         ];
         for vert in quad_vertices {
@@ -294,11 +314,11 @@ impl TextRenderer {
         }
         let curr_offset = index_offset.lock().unwrap().clone();
         text_indices.lock().unwrap().push(curr_offset);
+        text_indices.lock().unwrap().push(curr_offset + 2);
         text_indices.lock().unwrap().push(curr_offset + 1);
-        text_indices.lock().unwrap().push(curr_offset + 2);
         text_indices.lock().unwrap().push(curr_offset);
-        text_indices.lock().unwrap().push(curr_offset + 2);
         text_indices.lock().unwrap().push(curr_offset + 3);
+        text_indices.lock().unwrap().push(curr_offset + 2);
 
         // Update the index offset for the next glyph
         *index_offset.lock().unwrap() += 4;
@@ -308,7 +328,7 @@ impl TextRenderer {
       return Err(res.err().unwrap());
     }
 
-    let text_vertex_vec = text_vertices.lock().unwrap().clone();
+    let mut text_vertex_vec = text_vertices.lock().unwrap().clone();
     let text_index_vec = text_indices.lock().unwrap().clone();
 
     let num_text_indices = text_index_vec.len() as u32;
@@ -317,8 +337,21 @@ impl TextRenderer {
     if num_text_indices == 0 || num_text_vertices == 0 {
       return Ok((self.num_text_vertices.read().unwrap().clone(), self.num_text_indices.read().unwrap().clone()))
     }
+
+    let max_y_unwrapped = max_y_pos.read().unwrap().clone();
+    let min_y_unwrapped = min_y_pos.read().unwrap().clone();
     println!("Text index vec: {:?} contains {} indices", text_index_vec, num_text_indices);
     println!("Text vertex vec: {:?} contains {} vertices", text_vertex_vec, num_text_vertices);
+    println!("max y pos for text: {}", max_y_unwrapped);
+    for vert in text_vertex_vec.iter_mut() {
+      println!("Vert position: {:?}", vert.position);
+      if text.text.vertical_text_alignment == VerticalTextAlignment::Top || text.text.vertical_text_alignment == VerticalTextAlignment::Center {
+        vert.position[1] = max_y_unwrapped - vert.position[1];
+      } else {
+        vert.position[1] = min_y_unwrapped - vert.position[1];
+      }
+      println!("Updating vert position: {:?}", vert.position);
+    }
 
     queue.write_buffer(&self.text_vertex_buffer, 0, bytemuck::cast_slice(&text_vertex_vec));
     queue.write_buffer(&self.text_index_buffer, 0, bytemuck::cast_slice(&text_index_vec));

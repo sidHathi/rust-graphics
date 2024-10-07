@@ -1,12 +1,12 @@
 use std::result;
 
 use cgmath::Vector4;
-use glyph_brush::{BuiltInLineBreaker, Section, Text};
+use glyph_brush::{ab_glyph::FontArc, BuiltInLineBreaker, GlyphPositioner, Layout, LineBreak, LineBreaker, Section, SectionGeometry, Text};
 use wgpu::Color;
 
 use crate::engine::{errors::EngineError, transforms::ModelTransform, Scene};
 
-use super::font::{FontFace};
+use super::{font::FontFace};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum TextAlignment {
@@ -32,7 +32,7 @@ pub enum TextWrapStyle {
 pub struct CGText {
   pub transform: ModelTransform,
   pub font_size: f32,
-  pub color: [f32; 4],
+  pub color: Color,
   pub opacity: f32,
   pub text: String,
   pub wrap_style: TextWrapStyle,
@@ -49,14 +49,14 @@ impl From<&str> for CGText {
       text: content.into(),
       font_face: FontFace::Default,
       transform: ModelTransform::default(),
-      color: [0., 0., 0., 1.],
+      color: Color::BLACK,
       opacity: 1.,
       font_size: 12.,
       wrap_style: TextWrapStyle::NoWrap,
       text_alignment: TextAlignment::Center,
       vertical_text_alignment: VerticalTextAlignment::Top,
       max_height: None,
-      max_width: None
+      max_width: None,
     }
   }
 }
@@ -67,7 +67,7 @@ impl CGText {
       text: content.into(),
       font_face: FontFace::Default,
       transform: ModelTransform::default(),
-      color: [0., 0., 0., 1.],
+      color: Color::BLACK,
       opacity: 1.,
       font_size: 12.,
       max_height: None,
@@ -96,9 +96,9 @@ impl CGText {
     return new
   }
 
-  pub fn color(&self, color: [f32; 4]) -> Self {
+  pub fn color(&self, new_color: Color) -> Self {
     let mut new = self.clone();
-    new.color = color;
+    new.color = new_color;
     return new
   }
 
@@ -144,9 +144,9 @@ impl CGText {
     new
   }
 
+
   pub fn get_glyph_text(&self) -> glyph_brush::Text {
     glyph_brush::Text::new(&self.text)
-      .with_color(self.color)
       .with_scale(self.font_size)
   }
 
@@ -161,12 +161,11 @@ impl CGText {
       VerticalTextAlignment::Center => glyph_brush_layout::VerticalAlign::Center,
       VerticalTextAlignment::Bottom => glyph_brush_layout::VerticalAlign::Bottom
     };
+
     let layout = match self.wrap_style {
-      TextWrapStyle::Wrap => glyph_brush::Layout::Wrap { 
-        line_breaker: BuiltInLineBreaker::UnicodeLineBreaker,
-        h_align,
-        v_align,
-      },
+      TextWrapStyle::Wrap => Layout::default_wrap()
+        .h_align(h_align)
+        .v_align(v_align),
       TextWrapStyle::NoWrap => glyph_brush::Layout::SingleLine { 
         line_breaker: BuiltInLineBreaker::UnicodeLineBreaker,
         h_align,
@@ -176,7 +175,7 @@ impl CGText {
 
     Section {
       screen_position: (0.0, 0.0),
-      bounds: (self.max_width.unwrap_or(f32::INFINITY) * 10., self.max_height.unwrap_or(f32::INFINITY) * 10.),
+      bounds: (self.max_width.unwrap_or(f32::INFINITY) * 50., self.max_height.unwrap_or(f32::INFINITY) * 50.),
       text: vec![
         self.get_glyph_text(),
       ],

@@ -14,6 +14,7 @@ pub struct TextVertex {
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 pub struct TextModelData {
   pub model_matrix: [[f32; 4]; 4],
+  pub color: [f32; 3],
   pub opacity: f32
 }
 
@@ -76,6 +77,11 @@ impl Vertex for TextModelData {
         wgpu::VertexAttribute {
           offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
           shader_location: 6,
+          format: wgpu::VertexFormat::Float32x4,
+        },
+        wgpu::VertexAttribute {
+          offset: mem::size_of::<[f32; 19]>() as wgpu::BufferAddress,
+          shader_location: 7,
           format: wgpu::VertexFormat::Float32,
         },
       ]

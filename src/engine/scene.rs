@@ -1,12 +1,13 @@
 use std::{borrow::Borrow, collections::HashMap, fmt::Debug, sync::{Arc, Mutex}};
 
 use cgmath::{Rotation3, Vector2};
+use tokio::runtime::Runtime;
 use winit::{event::{ElementState, KeyboardInput, MouseButton, WindowEvent}, window::Window};
 use wgpu::{util::DeviceExt, BindGroupLayout};
 
-use crate::{debug::DebugVertex, engine::debug::get_line_render_pipeline, graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture}};
+use crate::{debug::DebugVertex, engine::{debug::get_line_render_pipeline, render_pipelines::RenderPipelineKey}, graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture}};
 
-use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderPipelineType, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, text::{CGText, TextRenderer}, transforms::ModelTransform};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, lighting::DirectionalLight, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, render_pipelines::RenderPipelines, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, text::{CGText, TextRenderer}, transforms::ModelTransform};
 
 // The Scene struct contains the data needed to render the wgpu scene
 // It manages the camera, lighting and i/o. It also handles the operation
@@ -32,12 +33,13 @@ pub struct Scene {
   light_bind_group_layout: wgpu::BindGroupLayout,
   light_bind_group: wgpu::BindGroup,
   light_render_pipeline: wgpu::RenderPipeline,
+  directional_light: DirectionalLight,
   pub mouse_pressed: bool,
   clear_color: (f64, f64, f64, f64),
   pub model_renderer: ModelRenderer,
-  render_pipeline_layout: wgpu::PipelineLayout,
-  render_pipeline: wgpu::RenderPipeline,
   staging_belt: wgpu::util::StagingBelt,
+  render_pipelines: RenderPipelines,
+  active_pipeline: RenderPipelineKey,
   pub app: Option<Component>, // top level component
   pub app_state: Store, // state manager
   pub event_manager: EventManager, // event manager
@@ -45,7 +47,6 @@ pub struct Scene {
   pub raycast_manager: RaycastManager,
   pub mouse: Mouse,
   pub debug_renderer: DebugRenderer,
-  pub debug_render_pipelines: HashMap<DebugRenderPipelineType, wgpu::RenderPipeline>,
   pub text_renderer: TextRenderer,
 }
 
@@ -157,6 +158,8 @@ impl Scene {
       }
     );
 
+    let directional_light = DirectionalLight::new([-800.0, 0.0, 0.0].into(), [-800., 0.0, 0.0].into(), [5000.0, 5000.0, 10000.0].into(), [1., 1., 1.].into(), &device, &config);
+
     // lighting
     let light_uniform = LightUniform {
       position: [2.0, 200.0, 2.0],
@@ -242,67 +245,45 @@ impl Scene {
 
     // load a depth texture
     let depth_texture = Texture::create_depth_texture(&device, &&config, "depth texture");
+    let mut staging_belt: wgpu::util::StagingBelt = wgpu::util::StagingBelt::new(1024);
 
-    // render pipeline
-    let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-      label: Some("Render Pipeline Layout"),
-      bind_group_layouts: &[
-        &texture_bind_group_layout,
-        &camera_bind_group_layout,
-        &light_bind_group_layout,
-      ],
-      push_constant_ranges: &[],
-    });
-    
     use crate::graphics::{
       Vertex,
       ModelVertex,
-      
     };
-    // pipline init/config
-    let render_pipeline = {
-      let shader = wgpu::ShaderModuleDescriptor {
-          label: Some("Model Shader"),
-          source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-      };
-      get_render_pipeline(
-        &device,
-        &render_pipeline_layout,
-        config.format,
-        Some(Texture::DEPTH_FORMAT),
-        &[ModelVertex::desc(), InstanceRaw::desc()],
-        shader,
-        "vs_main", 
-        "fs_main"
-      )
-    };
-
-
-    let line_render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-      label: Some("Line Render Pipeline Layout"),
-      bind_group_layouts: &[
+    let mut render_pipelines = RenderPipelines::new();
+    render_pipelines.init_render_pipeline(
+      RenderPipelineKey::BasicPipeline, 
+      &[
+        &texture_bind_group_layout,
         &camera_bind_group_layout,
-      ],
-      push_constant_ranges: &[],
-    });
-    // pipline init/config
-    let line_render_pipeline = {
-      let shader = wgpu::ShaderModuleDescriptor {
-          label: Some("Debug Line Shader"),
-          source: wgpu::ShaderSource::Wgsl(include_str!("debug/debug_line_shader.wgsl").into()),
-      };
-      get_line_render_pipeline(
-        &device,
-        &line_render_pipeline_layout,
-        config.format,
-        Some(Texture::DEPTH_FORMAT),
-        &[DebugVertex::desc()],
-        shader,
-        "vs_main", 
-        "fs_main"
-      )
-    };
-    let mut staging_belt = wgpu::util::StagingBelt::new(1024);
+        &light_bind_group_layout,
+      ], 
+      &[ModelVertex::desc(), InstanceRaw::desc()], 
+      wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()), 
+      "vs_main", 
+      "fs_main", 
+      Some("Basic render pipeline"), 
+      &device, 
+      &config
+    );
+    render_pipelines.init_render_pipeline(
+      RenderPipelineKey::DirectionalPipeline, 
+      &[
+        &texture_bind_group_layout,
+        &camera_bind_group_layout,
+        &directional_light.light_shadow_bind_group_layout,
+        &directional_light.shadow_dt_bind_group_layout,
+      ], 
+      &[ModelVertex::desc(), InstanceRaw::desc()], 
+      wgpu::ShaderSource::Wgsl(include_str!("./lighting/dl_shader.wgsl").into()), 
+      "vs_main", 
+      "fs_main", 
+      Some("Directional light render pipeline"), 
+      &device, 
+      &config
+    );
+    render_pipelines.init_line_pipeline(&camera_bind_group_layout, &device, &config);
 
     // model store, component store, state, events, collisions, initialized here
     let model_renderer = ModelRenderer::new();
@@ -313,8 +294,6 @@ impl Scene {
     let raycast_manager = RaycastManager::new();
     let mouse = Mouse::new(10000.);
     let debug_renderer = DebugRenderer::new();
-    let mut debug_render_pipelines = HashMap::new();
-    debug_render_pipelines.insert(DebugRenderPipelineType::Linear, line_render_pipeline);
     let text_renderer = TextRenderer::new(&device, &queue, &config, surface_format, &camera_bind_group_layout, &light_bind_group_layout);
 
     let mut scene = Self {
@@ -337,10 +316,10 @@ impl Scene {
       light_buffer,
       light_bind_group_layout,
       light_bind_group,
+      directional_light,
       camera_buffer,
       light_render_pipeline,
-      render_pipeline,
-      render_pipeline_layout,
+      render_pipelines,
       staging_belt,
       mouse_pressed: false,
       clear_color: (0.1, 0.2, 0.3, 1.),
@@ -351,8 +330,8 @@ impl Scene {
       raycast_manager,
       mouse,
       debug_renderer,
-      debug_render_pipelines,
-      text_renderer
+      text_renderer,
+      active_pipeline: RenderPipelineKey::DirectionalPipeline
     };
 
     println!("Scene initialized");
@@ -480,6 +459,20 @@ impl Scene {
     });
 
     {
+      use crate::graphics::ShadowMapModel;
+      let mut shadow_pass = encoder.begin_render_pass(&self.directional_light.shadow_render_pass());
+
+      shadow_pass.set_pipeline(&self.directional_light.shadow_map_pipeline);
+      for model_tuple in self.model_renderer.get_rendering_models() {
+        // println!("Rendering model: {:?}, {:?}", &model_tuple.0, &model_tuple.1);
+        shadow_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
+        shadow_pass.shadow_map_model_instanced(&model_tuple.0, 0..1, &self.directional_light.light_shadow_bind_group);
+      }
+    }
+
+    self.directional_light.readback_shadows(&self.device, &self.queue, &self.config);
+
+    {
       let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { 
         label: Some("Render pass"), 
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -512,25 +505,34 @@ impl Scene {
       // render_pass.set_pipeline(&self.light_render_pipeline);
       // render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
 
-      render_pass.set_pipeline(&self.render_pipeline);
+      render_pass.set_pipeline(self.render_pipelines.get_pipeline(&self.active_pipeline).unwrap());
       for model_tuple in self.model_renderer.get_rendering_models() {
         // println!("Rendering model: {:?}, {:?}", &model_tuple.0, &model_tuple.1);
         render_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
-        render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
+        match &self.active_pipeline {
+          RenderPipelineKey::DirectionalPipeline => {
+            render_pass.set_bind_group(3, &self.directional_light.shadow_dt_bind_group, &[]);
+            render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.directional_light.light_shadow_bind_group);
+          },
+          _ => {
+            render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
+          }
+        }
       }
       
       use crate::engine::text::DrawText;
       render_pass.draw_text(&self.text_renderer, &self.device, &self.queue, &self.config, &self.camera_bind_group, &self.light_bind_group);
 
       use crate::engine::debug::DrawDebugRenderables;
-      for (key, val) in self.debug_render_pipelines.iter() {
-        render_pass.draw_debug_renderables(&self.debug_renderer, key.clone(), val, &self.camera_bind_group);
-      }
+      render_pass.draw_debug_renderables(&self.debug_renderer, &RenderPipelineKey::LinePipeline, &self.render_pipelines, &self.camera_bind_group);
     }
 
-    self.staging_belt.finish();
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
+
+    // self.directional_light.readback_shadows(&self.device, &self.queue, &self.config);
+
+    self.staging_belt.finish();
     // clear model render list
     self.model_renderer.clear();
     self.debug_renderer.reset();

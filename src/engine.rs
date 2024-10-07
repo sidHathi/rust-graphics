@@ -17,5 +17,7 @@ mod raycasting;
 mod mouse;
 mod debug;
 mod text;
+mod lighting;
+mod render_pipelines;
 
 pub use scene::Scene;

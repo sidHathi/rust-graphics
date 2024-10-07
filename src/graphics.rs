@@ -24,6 +24,7 @@ pub use model::{
   Model,
   DrawLight,
   DrawModel,
+  ShadowMapModel
 };
 pub use instance::{
   Instance,
@@ -36,7 +37,8 @@ pub use camera::{
   Camera,
   CameraController,
   Projection,
-  CameraUniform
+  CameraUniform,
+  OPENGL_TO_WGPU_MATRIX,
 };
 pub use lighting::*;
 

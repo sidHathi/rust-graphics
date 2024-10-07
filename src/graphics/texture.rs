@@ -29,7 +29,8 @@ impl Texture {
         dimension: wgpu::TextureDimension::D2,
         format: Self::DEPTH_FORMAT,
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT // 3.
-            | wgpu::TextureUsages::TEXTURE_BINDING,
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
       }
     );

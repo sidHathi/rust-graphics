@@ -248,7 +248,7 @@ impl TextRenderer {
     let res = self.glyph_brush.lock().unwrap().process_queued(
       |rect, tex_data| {
         if tex_data.len() > 0 {
-          println!("{:?}", tex_data);
+          // println!("{:?}", tex_data);
           queue.write_texture(
             wgpu::ImageCopyTexture {
               texture: &self.texture.texture,
@@ -275,7 +275,7 @@ impl TextRenderer {
         }
       },
       |vertex_data| {
-        println!("Y coords for text glyph {}, {}", vertex_data.pixel_coords.max.y, vertex_data.pixel_coords.min.y);
+        // println!("Y coords for text glyph {}, {}", vertex_data.pixel_coords.max.y, vertex_data.pixel_coords.min.y);
         if vertex_data.pixel_coords.max.y > max_y_pos.read().unwrap().clone() {
           *max_y_pos.write().unwrap() = vertex_data.pixel_coords.max.y;
         } else if vertex_data.pixel_coords.max.y < min_y_pos.read().unwrap().clone() {
@@ -340,17 +340,17 @@ impl TextRenderer {
 
     let max_y_unwrapped = max_y_pos.read().unwrap().clone();
     let min_y_unwrapped = min_y_pos.read().unwrap().clone();
-    println!("Text index vec: {:?} contains {} indices", text_index_vec, num_text_indices);
-    println!("Text vertex vec: {:?} contains {} vertices", text_vertex_vec, num_text_vertices);
-    println!("max y pos for text: {}", max_y_unwrapped);
+    // println!("Text index vec: {:?} contains {} indices", text_index_vec, num_text_indices);
+    // println!("Text vertex vec: {:?} contains {} vertices", text_vertex_vec, num_text_vertices);
+    // println!("max y pos for text: {}", max_y_unwrapped);
     for vert in text_vertex_vec.iter_mut() {
-      println!("Vert position: {:?}", vert.position);
+      // println!("Vert position: {:?}", vert.position);
       if text.text.vertical_text_alignment == VerticalTextAlignment::Top || text.text.vertical_text_alignment == VerticalTextAlignment::Center {
         vert.position[1] = max_y_unwrapped - vert.position[1];
       } else {
         vert.position[1] = min_y_unwrapped - vert.position[1];
       }
-      println!("Updating vert position: {:?}", vert.position);
+      // println!("Updating vert position: {:?}", vert.position);
     }
 
     queue.write_buffer(&self.text_vertex_buffer, 0, bytemuck::cast_slice(&text_vertex_vec));

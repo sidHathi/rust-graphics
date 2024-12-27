@@ -30,9 +30,9 @@ if screen_height < 1 or screen_width < 1:
 
 num_occurrences = {}
 for val in f32_tex_vals:
-  if not num_occurrences.__contains__(val):
-    num_occurrences[val] = 0
-  num_occurrences[val] += 1
+  if not num_occurrences.__contains__(round(val, 3)):
+    num_occurrences[round(val, 3)] = 0
+  num_occurrences[round(val, 3)] += 1
 
 print("header read successfully")
 print("occurrence map: " + str(num_occurrences))

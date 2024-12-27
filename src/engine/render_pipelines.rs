@@ -8,6 +8,7 @@ use super::debug::{get_line_render_pipeline, DebugVertex};
 pub enum RenderPipelineKey {
   BasicPipeline,
   DirectionalPipeline,
+  PointLightPipeline,
   LinePipeline,
 }
 

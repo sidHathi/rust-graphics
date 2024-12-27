@@ -2,7 +2,7 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, test_component::TestComponent, transforms::ModelTransform, util::random_quaternion, Scene};
+use super::super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, transforms::ModelTransform, util::random_quaternion, Scene};
 use cgmath::{Point3, Quaternion, Vector3};
 use async_trait::async_trait;
 use winit::event::{ElementState, KeyboardInput};
@@ -53,7 +53,7 @@ impl ComponentFunctions for TestChildComponent {
   fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
     if self.should_set_state {
       let quaternion = random_quaternion();
-      println!("setting new state: {:?}", quaternion);
+      // println!("setting new state: {:?}", quaternion);
       let _ = scene.app_state.set_state("parent_rotation", State::Quaternion(quaternion));
       self.should_set_state = false;
     }
@@ -114,7 +114,7 @@ impl TestChildComponent {
 }
 
 impl EventListener for TestChildComponent {
-  fn handle_event(&mut self, event: super::events::Event) {
+  fn handle_event(&mut self, event: super::super::events::Event) {
       match event.data {
         EventData::KeyboardEvent (KeyboardInput {
           virtual_keycode: Some(key),

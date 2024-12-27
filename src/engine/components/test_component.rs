@@ -2,7 +2,7 @@ use std::{any::Any, sync::{Arc, Mutex, RwLock}};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, text::{CGText, TextAlignment, TextWrapStyle, VerticalTextAlignment}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene};
+use super::{super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, text::{CGText, TextAlignment, TextWrapStyle, VerticalTextAlignment}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene}, debug_spheres::DebugSpheres};
 use cgmath::{InnerSpace, Point3, Quaternion, Rad, Rotation, Rotation3, Vector3};
 use async_trait::async_trait;
 use wgpu::Color;
@@ -18,6 +18,7 @@ pub struct TestComponent {
   model_pos: Option<ModelTransform>,
   child: Option<Component>,
   child_pos: ComponentTransform,
+  debug_net: Option<Component>,
   collider: Option<Arc<RwLock<Collider>>>,
   active: bool,
   mem: Option<Arc<Mutex<Self>>>,
@@ -49,9 +50,13 @@ impl ComponentFunctions for TestComponent {
     let child = Component::new(child_underlying, scene, Some(self.key)).await;
     self.child = child;
     self.child_pos = ComponentTransform::local(
-      Vector3::new(20., 0., 0.), 
+      Vector3::new(0., -5., -40.), 
       Quaternion::new(5., 0., 0., 0.)
     );
+
+    let debug_net_underlying = DebugSpheres::new();
+    let debug_net = Component::new(debug_net_underlying, scene, Some(self.key)).await;
+    self.debug_net = debug_net;
 
     let collision_sdf = SdfShape::new(Shape::Cube { center: Point3::new(0., 0., 0.), width: 20., height: 20., depth: 20.}, CubeSdf);
     let collision_boundary = SdfBoundary::new(Point3::new(0., 0., 0.), collision_sdf);
@@ -139,7 +144,11 @@ impl ComponentFunctions for TestComponent {
       .render(scene);
 
     if let Some(child_safe) = self.child.clone() {
-      return child_safe.render(scene, Some(self.child_pos.clone()));
+      let _ = child_safe.render(scene, Some(self.child_pos.clone()));
+    }
+
+    if let Some(debug_net_safe) = self.debug_net.clone() {
+      let _ = debug_net_safe.render(scene, Some(self.child_pos.clone()));
     }
     Ok(())
   }
@@ -194,7 +203,7 @@ impl EventListener for TestComponent {
 }
 
 impl StateListener for TestComponent {
-  fn handle_state_change(&mut self, key: String, state: &super::state::State) {
+  fn handle_state_change(&mut self, key: String, state: &super::super::state::State) {
       match key {
         s if s.eq("parent_rotation") => {
           self.handle_new_rotation_state(state);
@@ -220,6 +229,7 @@ impl TestComponent {
       rotating: false,
       opacity: 1.,
       jumping: false,
+      debug_net: None,
     };
     let mem = Arc::new(Mutex::new(new_self));
     mem.lock().unwrap().mem = Some(mem.clone());

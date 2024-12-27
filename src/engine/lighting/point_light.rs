@@ -3,7 +3,7 @@ use wgpu::util::DeviceExt;
 
 use crate::{engine::lighting::shadow_map_pipeline::get_shadow_pipeline, graphics::{InstanceRaw, ModelVertex, Texture, Vertex, OPENGL_TO_WGPU_MATRIX}};
 
-use super::light_shadow_uniform::{self, LightShadowUniform};
+use super::{light_shadow_uniform::{self, LightShadowUniform}, utils::readback_shadows};
 
 pub struct PointLight {
   pos: Point3<f32>,
@@ -11,14 +11,14 @@ pub struct PointLight {
   aspect: f32,
   znear: f32,
   zfar: f32,
-  light_shadow_uniform: LightShadowUniform,
-  light_shadow_buffer: wgpu::Buffer,
-  light_shadow_bind_group_layout: wgpu::BindGroupLayout,
-  light_shadow_bind_group: wgpu::BindGroup,
+  pub light_shadow_uniform: LightShadowUniform,
+  pub light_shadow_buffer: wgpu::Buffer,
+  pub light_shadow_bind_group_layout: wgpu::BindGroupLayout,
+  pub light_shadow_bind_group: wgpu::BindGroup,
   shadow_dt: Texture,
-  shadow_map_pipeline: wgpu::RenderPipeline,
-  shadow_dt_bind_group_layout: wgpu::BindGroupLayout,
-  shadow_dt_bind_group: wgpu::BindGroup,
+  pub shadow_map_pipeline: wgpu::RenderPipeline,
+  pub shadow_dt_bind_group_layout: wgpu::BindGroupLayout,
+  pub shadow_dt_bind_group: wgpu::BindGroup,
 }
 
 impl PointLight {
@@ -76,7 +76,7 @@ impl PointLight {
       }
     );
     
-    let shadow_render_pipeline = {
+    let shadow_map_pipeline = {
       let shadow_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Shadow render pipeline layout"),
         bind_group_layouts: &[&light_shadow_bind_group_layout],
@@ -152,7 +152,33 @@ impl PointLight {
       shadow_dt,
       shadow_dt_bind_group,
       shadow_dt_bind_group_layout,
-      shadow_map_pipeline: shadow_render_pipeline
+      shadow_map_pipeline,
     }
+  }
+
+  pub fn shadow_render_pass(&self) -> wgpu::RenderPassDescriptor {
+    wgpu::RenderPassDescriptor {
+      color_attachments: &[],
+      label: Some("Shadow map render pass"),
+      depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+        view: &self.shadow_dt.view,
+        depth_ops: Some(wgpu::Operations {
+            load: wgpu::LoadOp::Clear(1.0),
+            store: wgpu::StoreOp::Store,
+        }),
+        stencil_ops: None,
+      }),
+      timestamp_writes: None,
+      occlusion_query_set: None
+    }
+  }
+
+  pub fn readback_shadows(
+    &self,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    config: &wgpu::SurfaceConfiguration,
+  ) {
+    readback_shadows(&self.shadow_dt, device, queue, config)
   }
 }

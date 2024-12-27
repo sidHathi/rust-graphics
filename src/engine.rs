@@ -1,13 +1,11 @@
 mod component;
 mod scene;
-mod test_component;
 mod model_renderer;
 mod errors;
 mod component_store;
 mod async_closure;
 mod transforms;
 mod transform_queue;
-mod test_child_component;
 mod state;
 mod events;
 mod util;
@@ -19,5 +17,6 @@ mod debug;
 mod text;
 mod lighting;
 mod render_pipelines;
+mod components;
 
 pub use scene::Scene;

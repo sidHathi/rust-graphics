@@ -1,13 +1,13 @@
 use std::{borrow::Borrow, collections::HashMap, fmt::Debug, sync::{Arc, Mutex}};
 
-use cgmath::{Rotation3, Vector2};
+use cgmath::{Rad, Rotation3, Vector2};
 use tokio::runtime::Runtime;
 use winit::{event::{ElementState, KeyboardInput, MouseButton, WindowEvent}, window::Window};
 use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::{debug::DebugVertex, engine::{debug::get_line_render_pipeline, render_pipelines::RenderPipelineKey}, graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture}};
 
-use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, lighting::DirectionalLight, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, render_pipelines::RenderPipelines, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, test_component::TestComponent, text::{CGText, TextRenderer}, transforms::ModelTransform};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, lighting::{DirectionalLight, PointLight}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, render_pipelines::RenderPipelines, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, components::TestComponent, text::{CGText, TextRenderer}, transforms::ModelTransform};
 
 // The Scene struct contains the data needed to render the wgpu scene
 // It manages the camera, lighting and i/o. It also handles the operation
@@ -33,7 +33,7 @@ pub struct Scene {
   light_bind_group_layout: wgpu::BindGroupLayout,
   light_bind_group: wgpu::BindGroup,
   light_render_pipeline: wgpu::RenderPipeline,
-  directional_light: DirectionalLight,
+  point_light: PointLight,
   pub mouse_pressed: bool,
   clear_color: (f64, f64, f64, f64),
   pub model_renderer: ModelRenderer,
@@ -158,7 +158,21 @@ impl Scene {
       }
     );
 
-    let directional_light = DirectionalLight::new([-800.0, 0.0, 0.0].into(), [-800., 0.0, 0.0].into(), [5000.0, 5000.0, 10000.0].into(), [1., 1., 1.].into(), &device, &config);
+    let directional_light = DirectionalLight::new([-800.0, 0.0, 0.0].into(), [-800., 0.0, 0.0].into(), [100.0, 100.0, 500.0].into(), [1., 1., 1.].into(), &device, &config);
+
+    let point_light = PointLight::new(
+      [0.0, 20.0, 50.0].into(),
+      [1., 1., 1.].into(),
+      cgmath::Deg(90.).into(),
+      config.width as f32,
+      config.height as f32,
+      0.1,
+      100.,
+      cgmath::Deg(-90.0).into(), 
+      cgmath::Deg(-20.0).into(),
+      &device,
+      &config
+    );
 
     // lighting
     let light_uniform = LightUniform {
@@ -283,6 +297,22 @@ impl Scene {
       &device, 
       &config
     );
+    render_pipelines.init_render_pipeline(
+      RenderPipelineKey::PointLightPipeline, 
+      &[
+        &texture_bind_group_layout,
+        &camera_bind_group_layout,
+        &point_light.light_shadow_bind_group_layout,
+        &point_light.shadow_dt_bind_group_layout,
+      ], 
+      &[ModelVertex::desc(), InstanceRaw::desc()], 
+      wgpu::ShaderSource::Wgsl(include_str!("./lighting/pl_shader.wgsl").into()), 
+      "vs_main", 
+      "fs_debug", 
+      Some("Point light render pipeline"), 
+      &device, 
+      &config
+    );
     render_pipelines.init_line_pipeline(&camera_bind_group_layout, &device, &config);
 
     // model store, component store, state, events, collisions, initialized here
@@ -316,7 +346,7 @@ impl Scene {
       light_buffer,
       light_bind_group_layout,
       light_bind_group,
-      directional_light,
+      point_light,
       camera_buffer,
       light_render_pipeline,
       render_pipelines,
@@ -331,7 +361,7 @@ impl Scene {
       mouse,
       debug_renderer,
       text_renderer,
-      active_pipeline: RenderPipelineKey::DirectionalPipeline
+      active_pipeline: RenderPipelineKey::PointLightPipeline
     };
 
     println!("Scene initialized");
@@ -460,17 +490,17 @@ impl Scene {
 
     {
       use crate::graphics::ShadowMapModel;
-      let mut shadow_pass = encoder.begin_render_pass(&self.directional_light.shadow_render_pass());
+      let mut shadow_pass = encoder.begin_render_pass(&self.point_light.shadow_render_pass());
 
-      shadow_pass.set_pipeline(&self.directional_light.shadow_map_pipeline);
+      shadow_pass.set_pipeline(&self.point_light.shadow_map_pipeline);
       for model_tuple in self.model_renderer.get_rendering_models() {
         // println!("Rendering model: {:?}, {:?}", &model_tuple.0, &model_tuple.1);
         shadow_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
-        shadow_pass.shadow_map_model_instanced(&model_tuple.0, 0..1, &self.directional_light.light_shadow_bind_group);
+        shadow_pass.shadow_map_model_instanced(&model_tuple.0, 0..1, &self.point_light.light_shadow_bind_group);
       }
     }
 
-    self.directional_light.readback_shadows(&self.device, &self.queue, &self.config);
+    // self.point_light.readback_shadows(&self.device, &self.queue, &self.config);
 
     {
       let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { 
@@ -510,9 +540,9 @@ impl Scene {
         // println!("Rendering model: {:?}, {:?}", &model_tuple.0, &model_tuple.1);
         render_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
         match &self.active_pipeline {
-          RenderPipelineKey::DirectionalPipeline => {
-            render_pass.set_bind_group(3, &self.directional_light.shadow_dt_bind_group, &[]);
-            render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.directional_light.light_shadow_bind_group);
+          RenderPipelineKey::PointLightPipeline => {
+            render_pass.set_bind_group(3, &self.point_light.shadow_dt_bind_group, &[]);
+            render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.point_light.light_shadow_bind_group);
           },
           _ => {
             render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
@@ -530,7 +560,7 @@ impl Scene {
     self.queue.submit(std::iter::once(encoder.finish()));
     output.present();
 
-    // self.directional_light.readback_shadows(&self.device, &self.queue, &self.config);
+    // self.point_light.readback_shadows(&self.device, &self.queue, &self.config);
 
     self.staging_belt.finish();
     // clear model render list

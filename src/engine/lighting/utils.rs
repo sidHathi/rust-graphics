@@ -34,7 +34,7 @@ pub fn readback_shadows(
       layout: wgpu::ImageDataLayout {
         offset: 0,
         bytes_per_row: Some(config.width * std::mem::size_of::<f32>() as u32),
-        rows_per_image: Some(config.height as u32),
+        rows_per_image: Some(config.height),
       },
     },
     wgpu::Extent3d {
@@ -64,7 +64,7 @@ pub fn readback_shadows(
     let slice: &[u8] = &buffer_slice.get_mapped_range();
     let mut num_shadowed: u32 = 0;
     let mut num_lit: u32 = 0;
-    for (idx, val) in slice.iter().enumerate() {
+    for (_idx, val) in slice.iter().enumerate() {
       if *val != 0 {
         num_lit += 1;
         // println!("Val {} found at row {}, col {}", *val, idx/(config.width as usize), idx - (config.width as usize * (idx/(config.width as usize))));

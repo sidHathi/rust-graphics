@@ -1,6 +1,6 @@
-use std::{any, borrow::Borrow, collections::{hash_map::{Iter, IterMut}, HashMap}, future::Future};
+use std::{collections::{hash_map::{Iter, IterMut}, HashMap}};
 
-use super::{async_closure::run_component_closure, component::{self, Component}, errors::EngineError};
+use super::{async_closure::run_component_closure, component::{Component}, errors::EngineError};
 
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -30,13 +30,13 @@ impl ComponentStore {
   }
 
   pub fn insert(&mut self, component: Component) -> Result<ComponentKey, EngineError> {
-    if self.next_idx >= u32::MAX {
+    if self.next_idx == u32::MAX {
       return Err(EngineError::MaxComponentsError { insertion_loc: "ComponentStore::insert".into() })
     }
 
     let key = ComponentKey { index: self.next_idx };
     self.next_idx += 1;
-    self.components.insert(key.clone(), component);
+    self.components.insert(key, component);
     Ok(key)
   }
 
@@ -45,13 +45,13 @@ impl ComponentStore {
   }
 
   pub fn modify<F>(&mut self, key: ComponentKey, modfunc: F) -> Option<&Component>
-    where F: Fn(&mut Component) -> () {
+    where F: Fn(&mut Component) {
     if !self.components.contains_key(&key) {
       return None;
     }
 
     let component = self.components.get_mut(&key).unwrap();
-    let modified = (modfunc)(component);
+    (modfunc)(component);
     self.components.get(&key)
   }
 
@@ -64,8 +64,8 @@ impl ComponentStore {
       return None;
     }
 
-    let mut component = self.components.get_mut(&key).unwrap();
-    run_component_closure(modfunc, &mut component).await;
+    let component = self.components.get_mut(&key).unwrap();
+    run_component_closure(modfunc, component).await;
     self.components.get(&key)
   }
 
@@ -82,7 +82,7 @@ impl ComponentStore {
   }
 
   pub fn keys(&self) -> Vec<&ComponentKey> {
-    self.components.keys().into_iter().collect::<Vec<&ComponentKey>>()
+    self.components.keys().collect::<Vec<&ComponentKey>>()
   }
 
   pub fn iter(&self) -> Iter<ComponentKey, Component> {

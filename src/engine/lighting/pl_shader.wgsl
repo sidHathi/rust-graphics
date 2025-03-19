@@ -106,7 +106,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   var visibility = 0.0;
   let recip_size = 1.0 / shadowDepthTextureSize;
   let shadow_coord = in.light_shadow_pos.xy / in.light_shadow_pos.w * 0.5 + vec2<f32>(0.5, 0.5);
-  let depth = in.light_shadow_pos.z / in.light_shadow_pos.w;
+  let depth = (in.light_shadow_pos.z / in.light_shadow_pos.w) - 0.001;
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
       let offset = vec2f(vec2(x, y)) * recip_size;
@@ -147,7 +147,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 @fragment
 fn fs_debug(in: VertexOutput) -> @location(0) vec4<f32> {
   let shadow_coord = in.light_shadow_pos.xy / in.light_shadow_pos.w * 0.5 + vec2<f32>(0.5, 0.5);
-  let depth = in.light_shadow_pos.z / in.light_shadow_pos.w;
+  let depth = (in.light_shadow_pos.z / in.light_shadow_pos.w) - 0.001;
   let value = textureSampleCompare(
     shadowMap, shadowSampler,
     shadow_coord, depth

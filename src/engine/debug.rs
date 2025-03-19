@@ -5,7 +5,6 @@ mod line_pipeline;
 
 pub use debug_renderer::{
   DebugRenderer,
-  DebugRenderable,
   DrawDebugRenderables
 };
 pub use debug_line::DebugLine;

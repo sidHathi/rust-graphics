@@ -13,7 +13,7 @@ pub fn get_light_buffer(device: &wgpu::Device, uniform: &LightUniform) -> wgpu::
   device.create_buffer_init(
     &wgpu::util::BufferInitDescriptor {
       label: Some("Light VB"),
-      contents: bytemuck::cast_slice(&[uniform.clone()]),
+      contents: bytemuck::cast_slice(&[*uniform]),
       usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
     }
   )

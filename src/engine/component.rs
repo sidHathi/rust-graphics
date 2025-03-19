@@ -1,11 +1,9 @@
-use std::{any::Any, future::Future, ops::Deref, rc::Rc, sync::{Arc, Mutex, MutexGuard}};
-
-use cgmath::Point3;
+use std::{any::Any, future::Future, sync::Arc, time::Duration};
+use futures::lock;
+use parking_lot::Mutex;
 use tokio::runtime::Runtime;
-
-use crate::graphics::{DrawModel, Model};
-
-use super::{component_store::ComponentKey, errors::EngineError, events::{Event, EventKey, EventListener}, model_renderer::ModelRenderer, state::StateListener, transforms::ComponentTransform, Scene};
+use winit::event;
+use super::{component_store::ComponentKey, errors::EngineError, events::{EventListener}, state::StateListener, transforms::ComponentTransform, Scene};
 use async_trait::async_trait;
 
 #[async_trait(?Send)]
@@ -19,18 +17,17 @@ pub trait ComponentFunctions: Any + Send + Sync + EventListener + StateListener 
   );
 
   // update is called every frame
-  fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
-    return;
+  fn update(&mut self, _scene: &mut Scene, _dt: instant::Duration) {
   }
 
   // get models to be rendered when this component is rendered
-  fn render(&self, scene: &mut Scene) -> Result<(), EngineError> {
+  fn render(&self, _scene: &mut Scene) -> Result<(), EngineError> {
     Ok(())
   }
 }
 
 pub trait AsyncCallbackHandler<T>: ComponentFunctions + Any {
-  fn handle_async_res(&mut self, data: T) -> ();
+  fn handle_async_res(&mut self, data: T);
 }
 
 // Sized wrapper for a ComponentFunctions implementing struct
@@ -57,7 +54,7 @@ impl Component {
     let key_res = scene.components.insert(component.clone());
     if let Ok(key) = key_res {
       component.key = key;
-      component.clone().init(scene, key.clone(), parent).await;
+      component.clone().init(scene, key, parent).await;
       return Some(component);
     }
     None
@@ -70,22 +67,38 @@ impl Component {
     key: ComponentKey,
     parent: Option<ComponentKey>,
   ) {
-    self.underlying.lock().unwrap().init(scene, key, parent).await;
+    let lock_optional = self.underlying.try_lock_for(Duration::from_millis(100));
+    if let Some(mut lock) = lock_optional {
+      lock.init(scene, key, parent).await;
+    } else {
+      println!("Failed to lock component during initialization");
+    }
   }
 
   // update the underlying component
   pub fn update(&self, scene: &mut Scene, dt: instant::Duration) {
-    self.underlying.lock().unwrap().update(scene, dt);
+    let lock_optional = self.underlying.try_lock_for(Duration::from_millis(100));
+    if let Some(mut lock) = lock_optional {
+      lock.update(scene, dt);
+    } else {
+      println!("Failed to lock component during update");
+    }
   }
 
   // render the component
   pub fn render(&self, scene: &mut Scene, transform: Option<ComponentTransform>) -> Result<(), EngineError> {
     scene.model_renderer.start_component_render(transform, self.key);
     scene.text_renderer.start_component_render(transform.unwrap_or(ComponentTransform::default()));
-    let res = self.underlying.lock().unwrap().render(scene);
-    scene.model_renderer.end_component_render();
-    scene.text_renderer.end_component_render();
-    res
+    let lock_optional = self.underlying.try_lock_for(Duration::from_millis(100));
+    if let Some(mut lock) = lock_optional {
+      let res = lock.render(scene);
+      scene.model_renderer.end_component_render();
+      scene.text_renderer.end_component_render();
+      res
+    } else {
+      println!("Failed to lock component during rendering");
+      Err(EngineError::LockError { message: "Failed to lock component during rendering".to_string() })
+    }
   }
 
   // // used to execute async code which requires mutable access to a component
@@ -125,7 +138,7 @@ impl Component {
       let out = rt.block_on(async {
         (func)(underlying, args).await
       });
-      comp_mutex.lock().unwrap().handle_async_res(out);
+      comp_mutex.lock().handle_async_res(out);
     });
   }
 }
@@ -134,12 +147,20 @@ impl Component {
 impl EventListener for Component {
   fn handle_event(&mut self, event: super::events::Event) {
     // Check if the trait object also implements AnotherTrait
-    self.underlying.lock().unwrap().handle_event(event)
+    if let Some(mut lock) = self.underlying.try_lock_for(Duration::from_millis(100)) {
+      lock.handle_event(event)
+    } else {
+      println!("Failed to lock component during event handling");
+    }
   }
 }
 
 impl StateListener for Component {
   fn handle_state_change(&mut self, key: String, state: &super::state::State) {
-      self.underlying.lock().unwrap().handle_state_change(key, state)
+    if let Some(mut lock) = self.underlying.try_lock_for(Duration::from_millis(100)) {
+      lock.handle_state_change(key, state)
+    } else {
+      println!("Failed to lock component during state change");
+    }
   }
 }

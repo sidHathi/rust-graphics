@@ -8,7 +8,7 @@ mod transforms;
 mod transform_queue;
 mod state;
 mod events;
-mod util;
+mod utils;
 mod collisions;
 mod renderable_model;
 mod raycasting;
@@ -18,5 +18,6 @@ mod text;
 mod lighting;
 mod render_pipelines;
 mod components;
+mod app;
 
 pub use scene::Scene;

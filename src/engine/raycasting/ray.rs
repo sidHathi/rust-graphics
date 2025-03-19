@@ -1,6 +1,6 @@
 use core::f32;
 
-use cgmath::{EuclideanSpace, InnerSpace, Matrix3, Matrix4, MetricSpace, Point3, Transform, Vector2, Vector3};
+use cgmath::{EuclideanSpace, InnerSpace, Matrix4, MetricSpace, Point3, Transform, Vector2, Vector3};
 
 use crate::sdf::SdfShape;
 
@@ -65,13 +65,13 @@ impl Ray {
     let mut step_size: f32;
     while *iters < max_iter.unwrap_or(MAX_ST_ITERS) && self.origin.distance(loc) < max_dist.unwrap_or(f32::INFINITY) {
         step_size = sdf.dist(loc);
-        loc = loc + self.direction * step_size;
+        loc += self.direction * step_size;
         if step_size < tol.unwrap_or(DEFAULT_ST_TOL) {
             return Some(loc)
         }
         *iters += 1;
     }
-    return None;
+    None
   }
 
   pub fn get_transformed(&self, transform_mat: Matrix4<f32>) -> Self {

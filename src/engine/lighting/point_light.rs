@@ -1,9 +1,9 @@
-use cgmath::{perspective, InnerSpace, Matrix4, Point3, Rad, Vector3};
+use cgmath::{Point3, Rad, Vector3};
 use wgpu::util::DeviceExt;
 
-use crate::{engine::lighting::shadow_map_pipeline::get_shadow_pipeline, graphics::{InstanceRaw, ModelVertex, Texture, Vertex, OPENGL_TO_WGPU_MATRIX}};
+use crate::{engine::{lighting::shadow_map_pipeline::get_shadow_pipeline, utils::Positioned}, graphics::{InstanceRaw, ModelVertex, Texture, Vertex}};
 
-use super::{light_shadow_uniform::{self, LightShadowUniform}, utils::readback_shadows};
+use super::{light_shadow_uniform::{LightShadowUniform, LightShadowUniformConstructionProps}, utils::readback_shadows};
 
 pub struct PointLight {
   pos: Point3<f32>,
@@ -21,22 +21,25 @@ pub struct PointLight {
   pub shadow_dt_bind_group: wgpu::BindGroup,
 }
 
+pub struct PointLightConstructionProps<'a> {
+  pub pos: Point3<f32>,
+  pub color: Vector3<f32>,
+  pub fovy: Rad<f32>,
+  pub width: f32,
+  pub height: f32,
+  pub znear: f32,
+  pub zfar: f32,
+  pub pitch: Rad<f32>,
+  pub yaw: Rad<f32>,
+  pub device: &'a wgpu::Device,
+  pub config: &'a wgpu::SurfaceConfiguration
+}
+
 impl PointLight {
-  pub fn new(
-    pos: Point3<f32>,
-    color: Vector3<f32>,
-    fovy: Rad<f32>,
-    width: f32,
-    height: f32,
-    znear: f32,
-    zfar: f32,
-    pitch: Rad<f32>,
-    yaw: Rad<f32>,
-    device: &wgpu::Device,
-    config: &wgpu::SurfaceConfiguration
-  ) -> Self {
+  pub fn new(construction_props: PointLightConstructionProps) -> Self {
+    let PointLightConstructionProps { pos, color, fovy, width, height, znear, zfar, pitch, yaw, device, config } = construction_props;
     let aspect = width / height;
-    let light_shadow_uniform = LightShadowUniform::new_perspective(pos, fovy, znear, zfar, aspect, pitch, yaw, color);
+    let light_shadow_uniform = LightShadowUniform::new_perspective(LightShadowUniformConstructionProps { pos, fovy, znear, zfar, aspect, pitch, yaw, color });
     let shadow_dt = Texture::create_depth_texture(device, config, "shadow map");
 
     let light_shadow_buffer = device.create_buffer_init(
@@ -180,5 +183,11 @@ impl PointLight {
     config: &wgpu::SurfaceConfiguration,
   ) {
     readback_shadows(&self.shadow_dt, device, queue, config)
+  }
+}
+
+impl Positioned for PointLight {
+  fn get_position(&self) -> Option<Point3<f32>> {
+    Some(self.pos)
   }
 }

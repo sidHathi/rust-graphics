@@ -1,4 +1,4 @@
-use log::trace;
+
 
 use super::triangle::{
   Triangle
@@ -7,7 +7,7 @@ use std::hash::{
   Hash, Hasher
 };
 use std::collections::{hash_set, HashSet};
-use std::path::Iter;
+
 
 impl<'a> Hash for Triangle<'a> {
   fn hash<H: Hasher>(&self, state: &mut H) {
@@ -55,6 +55,6 @@ impl<'a> TriangleSet<'a> {
       out += tri.debug_str().as_str();
       out += "\n";
     }
-    return out;
+    out
   }
 }

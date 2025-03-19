@@ -1,25 +1,25 @@
-use std::{any::Any, sync::{Arc, Mutex, RwLock}};
+use std::sync::Arc;
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::{super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, text::{CGText, TextAlignment, TextWrapStyle, VerticalTextAlignment}, transforms::{ColliderTransform, ComponentTransform, ModelTransform}, util::random_quaternion, Scene}, debug_spheres::DebugSpheres};
+use super::{super::{collisions::{Collider, Collision, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{Event, EventData, EventKey, EventListener}, renderable_model::{ModelDims, RenderableModel}, state::{State, StateListener}, text::{CGText, TextAlignment, TextWrapStyle, VerticalTextAlignment}, transforms::{ComponentTransform, ModelTransform}, utils::random_quaternion, Scene}, debug_spheres::DebugSpheres};
 use cgmath::{InnerSpace, Point3, Quaternion, Rad, Rotation, Rotation3, Vector3};
 use async_trait::async_trait;
+use parking_lot::Mutex;
 use wgpu::Color;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 use super::test_child_component::TestChildComponent;
-use rand::Rng;
+
 
 pub struct TestComponent {
   key: ComponentKey,
   parent: Option<ComponentKey>,
-  local_position: Point3<f32>,
   model: Option<RenderableModel>,
   model_pos: Option<ModelTransform>,
   child: Option<Component>,
   child_pos: ComponentTransform,
   debug_net: Option<Component>,
-  collider: Option<Arc<RwLock<Collider>>>,
+  collider: Option<Arc<Mutex<Collider>>>,
   active: bool,
   mem: Option<Arc<Mutex<Self>>>,
   rotating: bool,
@@ -50,7 +50,7 @@ impl ComponentFunctions for TestComponent {
     let child = Component::new(child_underlying, scene, Some(self.key)).await;
     self.child = child;
     self.child_pos = ComponentTransform::local(
-      Vector3::new(0., -5., -40.), 
+      Vector3::new(0., -5., -20.), 
       Quaternion::new(5., 0., 0., 0.)
     );
 
@@ -63,11 +63,11 @@ impl ComponentFunctions for TestComponent {
     self.collider = Some(scene.collision_manager.add_component_collider(collision_boundary, key, None));
     
     let _ = self.add_event_listener(scene, &key, &EventKey::KeyboardEvent);
-    let _ = self.add_event_listener(scene, &key, &EventKey::CollisionStartEvent(self.key.clone()));
-    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverStartEvent(self.key.clone()));
-    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverEndEvent(self.key.clone()));
-    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoveringEvent(self.key.clone()));
-    let _ = self.add_event_listener(scene, &key, &EventKey::MouseSelectEvent(self.key.clone()));
+    let _ = self.add_event_listener(scene, &key, &EventKey::CollisionStartEvent(self.key));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverStartEvent(self.key));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoverEndEvent(self.key));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseHoveringEvent(self.key));
+    let _ = self.add_event_listener(scene, &key, &EventKey::MouseSelectEvent(self.key));
     let _ = self.add_state_listener(scene, &key, "parent_rotation".into());
     let _ = scene.app_state.set_state("parent_y_offset", State::Float(0.));
 
@@ -76,14 +76,14 @@ impl ComponentFunctions for TestComponent {
     }
   }
 
-  fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
+  fn update(&mut self, scene: &mut Scene, _dt: instant::Duration) {
     if self.rotating {
       let axis = Vector3::<f32>::unit_y();
       let angle = Rad(0.01);
       if let Some(model_pos) = self.model_pos.as_mut() {
         model_pos.apply_rot(axis, angle);
         if let Some(collider) = self.collider.clone() {
-          collider.write().unwrap().update_rot(Quaternion::from_axis_angle(axis, angle));
+          collider.lock().update_rot(Quaternion::from_axis_angle(axis, angle));
         }
       } else {
         self.model_pos = Some(ModelTransform::default());
@@ -116,20 +116,16 @@ impl ComponentFunctions for TestComponent {
     }
     if let Some(collider) = self.collider.clone() {
       if let Some(transform) = self.model_pos.clone() {
-        collider.write().unwrap().update_transform(transform.pos, transform.rot)
+        collider.lock().update_transform(transform.pos, transform.rot);
       }
     }
 
     if let Some(model) = self.model.as_ref() {
-      let res = model
+      let _ = model
         .transform(self.model_pos.clone().unwrap_or(ModelTransform::default()))
         .dims(ModelDims::new(20., 20., 20.))
         .opacity(self.opacity)
         .render(scene);
-
-      if let Err(e) = res {
-          return Err(e);
-      }
     }
 
     CGText::new("this is text")
@@ -144,11 +140,11 @@ impl ComponentFunctions for TestComponent {
       .render(scene);
 
     if let Some(child_safe) = self.child.clone() {
-      let _ = child_safe.render(scene, Some(self.child_pos.clone()));
+      let _ = child_safe.render(scene, Some(self.child_pos));
     }
 
     if let Some(debug_net_safe) = self.debug_net.clone() {
-      let _ = debug_net_safe.render(scene, Some(self.child_pos.clone()));
+      let _ = debug_net_safe.render(scene, Some(self.child_pos));
     }
     Ok(())
   }
@@ -182,14 +178,14 @@ impl EventListener for TestComponent {
           self.handle_collision(c1, collision);
         }
       },
-      EventData::MouseHoverStartEvent { component, collider_idx, intersect_loc } => {
+      EventData::MouseHoverStartEvent { component: _, collider_idx: _, intersect_loc: _ } => {
         println!("Handling mouse hover start event!");
         self.opacity = 0.5;
       },
-      EventData::MouseHoveringEvent { component, collider_idx, intersect_loc } => {
+      EventData::MouseHoveringEvent { component: _, collider_idx: _, intersect_loc: _ } => {
         // println!("Handling mouse hovering event!");
       },
-      EventData::MouseHoverEndEvent { component, collider_idx } => {
+      EventData::MouseHoverEndEvent { component: _, collider_idx: _ } => {
         println!("Handling mouse hover end event!");
         self.opacity = 1.;
       },
@@ -220,7 +216,6 @@ impl TestComponent {
       parent: None,
       model: None,
       child: None,
-      local_position: Point3 { x: 0., y: 0., z: 0. },
       active: false,
       child_pos: ComponentTransform::default(),
       model_pos: None,
@@ -232,7 +227,7 @@ impl TestComponent {
       debug_net: None,
     };
     let mem = Arc::new(Mutex::new(new_self));
-    mem.lock().unwrap().mem = Some(mem.clone());
+    mem.lock().mem = Some(mem.clone());
     mem
   }
 
@@ -241,25 +236,24 @@ impl TestComponent {
       State::Quaternion(q) => {
         println!("handling new state: {:?}", q);
         let old_pos = self.model_pos.clone().unwrap_or(ModelTransform::default()).get_pos();
-        self.model_pos = Some(ModelTransform::local(old_pos, q.clone()));
+        self.model_pos = Some(ModelTransform::local(old_pos, *q));
       },
       _ => {}
     }
   }
 
-  pub fn handle_collision(&mut self, component: ComponentKey, collision: Collision) {
+  pub fn handle_collision(&mut self, component: ComponentKey, _collision: Collision) {
     println!("Collision event with component {:?} detected and handled!", component);
-    return
   }
 
-  pub async fn set_rotation_after_wait(mem: Arc<Mutex<Self>>, args: ()) {
+  pub async fn set_rotation_after_wait(mem: Arc<Mutex<Self>>, _args: ()) {
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-    mem.lock().unwrap().rotating = true;
+    mem.lock().rotating = true;
   }
 }
 
 impl AsyncCallbackHandler<()> for TestComponent {
-  fn handle_async_res(&mut self, data: ()) -> () {
+  fn handle_async_res(&mut self, _data: ()) {
     println!("Async callback triggered");
   }
 }

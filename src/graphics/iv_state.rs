@@ -3,10 +3,10 @@ use wgpu::util::DeviceExt;
 use winit::{event::{ElementState, KeyboardInput, MouseButton, WindowEvent}, window::Window};
 use cgmath::prelude::*;
 use crate::debug::{
-  self, DebugCubeNet, DrawDebugNet
+  self, DebugCubeNet
 };
 
-use crate::{graphics::{model::{self, Vertex}, pipeline::get_render_pipeline, Texture}, sdf::{DrawIVModel, InferredVertexModel, SdfBounds, SdfShape, Shape}, util::Point};
+use crate::{graphics::{model::{self, Vertex}, pipeline::get_render_pipeline, Texture}, sdf::{DrawIVModel, InferredVertexModel, SdfBounds, SdfShape, Shape}};
 
 use super::{camera::{Camera, CameraController, CameraUniform, Projection}, lighting};
 
@@ -77,9 +77,7 @@ impl IVState {
     let surface_caps = surface.get_capabilities(&adapter);
 
     let surface_format = surface_caps.formats.iter()
-      .copied()
-      .filter(|f| f.is_srgb())
-      .next()
+      .copied().find(|f| f.is_srgb())
       .unwrap_or(surface_caps.formats[0]);
     let config = wgpu::SurfaceConfiguration {
       usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -404,7 +402,7 @@ impl IVState {
         occlusion_query_set: None 
       });
 
-      use super::model::DrawLight;
+      
       // render_pass.set_pipeline(&self.light_render_pipeline);
       // render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
 

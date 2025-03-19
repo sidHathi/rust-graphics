@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use cgmath::Point3;
 
-use crate::engine::{collisions::{Collider, CollisionManager}, component_store::ComponentKey, events::{Event, EventData, EventKey, EventManager}};
+use crate::engine::{collisions::{CollisionManager}, component_store::ComponentKey, events::{Event, EventData, EventKey, EventManager}};
 
-use super::{ray, Ray};
+use super::{Ray};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct RayIntersect {
@@ -79,10 +79,10 @@ impl RaycastManager {
     for raycast in self.raycasts.values() {
       for intersect in raycast.intersections.iter() {
         event_manager.handle_event(Event {
-          key: EventKey::RaycastIntersectEvent(intersect.component.clone()),
+          key: EventKey::RaycastIntersectEvent(intersect.component),
           data: EventData::RaycastIntersectEvent {
-            component: intersect.component.clone(), 
-            intersect_loc: intersect.loc.clone() ,
+            component: intersect.component, 
+            intersect_loc: intersect.loc ,
             collider_idx: intersect.collider_idx
           }
         });

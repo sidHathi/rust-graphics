@@ -1,13 +1,15 @@
-use std::{borrow::Borrow, collections::HashMap, fmt::Debug, sync::{Arc, Mutex}};
 
-use cgmath::{Rad, Rotation3, Vector2};
-use tokio::runtime::Runtime;
+
+use std::sync::Arc;
+
+use cgmath::{Rotation3, Vector2};
+
 use winit::{event::{ElementState, KeyboardInput, MouseButton, WindowEvent}, window::Window};
 use wgpu::{util::DeviceExt, BindGroupLayout};
 
-use crate::{debug::DebugVertex, engine::{debug::get_line_render_pipeline, render_pipelines::RenderPipelineKey}, graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Model, Projection, Texture}};
+use crate::{engine::{app::App, lighting::PointLightConstructionProps, render_pipelines::RenderPipelineKey}, graphics::{get_light_bind_group_info, get_light_buffer, get_render_pipeline, Camera, CameraController, CameraUniform, DrawModel, Instance, InstanceRaw, LightUniform, Projection, Texture}};
 
-use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, lighting::{DirectionalLight, PointLight}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, render_pipelines::RenderPipelines, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, components::TestComponent, text::{CGText, TextRenderer}, transforms::ModelTransform};
+use super::{collisions::CollisionManager, component::Component, component_store::{ComponentKey, ComponentStore}, debug::{DebugLine, DebugRenderer}, errors::EngineError, events::{Event, EventManager}, lighting::{DirectionalLight, PointLight}, model_renderer::ModelRenderer, mouse::Mouse, raycasting::RaycastManager, render_pipelines::RenderPipelines, renderable_model::{RenderSettings, RenderableModel}, state::{create_app_state, Store}, components::TestComponent, text::{CGText, TextRenderer}};
 
 // The Scene struct contains the data needed to render the wgpu scene
 // It manages the camera, lighting and i/o. It also handles the operation
@@ -33,7 +35,7 @@ pub struct Scene {
   light_bind_group_layout: wgpu::BindGroupLayout,
   light_bind_group: wgpu::BindGroup,
   light_render_pipeline: wgpu::RenderPipeline,
-  point_light: PointLight,
+  pub point_light: Arc<PointLight>,
   pub mouse_pressed: bool,
   clear_color: (f64, f64, f64, f64),
   pub model_renderer: ModelRenderer,
@@ -92,9 +94,7 @@ impl Scene {
     let surface_caps = surface.get_capabilities(&adapter);
 
     let surface_format = surface_caps.formats.iter()
-      .copied()
-      .filter(|f| f.is_srgb())
-      .next()
+      .copied().find(|f| f.is_srgb())
       .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
 
     let config = wgpu::SurfaceConfiguration {
@@ -160,19 +160,19 @@ impl Scene {
 
     let directional_light = DirectionalLight::new([-800.0, 0.0, 0.0].into(), [-800., 0.0, 0.0].into(), [100.0, 100.0, 500.0].into(), [1., 1., 1.].into(), &device, &config);
 
-    let point_light = PointLight::new(
-      [0.0, 20.0, 50.0].into(),
-      [1., 1., 1.].into(),
-      cgmath::Deg(90.).into(),
-      config.width as f32,
-      config.height as f32,
-      0.1,
-      100.,
-      cgmath::Deg(-90.0).into(), 
-      cgmath::Deg(-20.0).into(),
-      &device,
-      &config
-    );
+    let point_light = Arc::new(PointLight::new(PointLightConstructionProps {
+      pos: [0.0, 50.0, 20.0].into(),
+      color: [1., 1., 1.].into(),
+      fovy: cgmath::Deg(45.).into(),
+      width: config.width as f32,
+      height: config.height as f32,
+      znear: 0.1,
+      zfar: 100.,
+      pitch: cgmath::Deg(-90.0).into(), 
+      yaw: cgmath::Deg(-20.0).into(),
+      device: &device,
+      config: &config
+  }));
 
     // lighting
     let light_uniform = LightUniform {
@@ -258,8 +258,8 @@ impl Scene {
     );
 
     // load a depth texture
-    let depth_texture = Texture::create_depth_texture(&device, &&config, "depth texture");
-    let mut staging_belt: wgpu::util::StagingBelt = wgpu::util::StagingBelt::new(1024);
+    let depth_texture = Texture::create_depth_texture(&device, &config, "depth texture");
+    let staging_belt: wgpu::util::StagingBelt = wgpu::util::StagingBelt::new(1024);
 
     use crate::graphics::{
       Vertex,
@@ -308,7 +308,7 @@ impl Scene {
       &[ModelVertex::desc(), InstanceRaw::desc()], 
       wgpu::ShaderSource::Wgsl(include_str!("./lighting/pl_shader.wgsl").into()), 
       "vs_main", 
-      "fs_debug", 
+      "fs_main", 
       Some("Point light render pipeline"), 
       &device, 
       &config
@@ -366,7 +366,7 @@ impl Scene {
 
     println!("Scene initialized");
     // The main app component gets initialized here
-    let underlying = TestComponent::new();
+    let underlying = App::new();
     let app = Component::new(
       underlying,
       &mut scene,
@@ -493,10 +493,9 @@ impl Scene {
       let mut shadow_pass = encoder.begin_render_pass(&self.point_light.shadow_render_pass());
 
       shadow_pass.set_pipeline(&self.point_light.shadow_map_pipeline);
-      for model_tuple in self.model_renderer.get_rendering_models() {
-        // println!("Rendering model: {:?}, {:?}", &model_tuple.0, &model_tuple.1);
-        shadow_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
-        shadow_pass.shadow_map_model_instanced(&model_tuple.0, 0..1, &self.point_light.light_shadow_bind_group);
+      for (model, buffer, num_instances) in self.model_renderer.get_rendering_models() {
+        shadow_pass.set_vertex_buffer(1, buffer.slice(..));
+        shadow_pass.shadow_map_model_instanced(model, 0..num_instances as u32, &self.point_light.light_shadow_bind_group);
       }
     }
 
@@ -531,21 +530,21 @@ impl Scene {
       });
 
 
-      use crate::graphics::DrawLight;
+      
       // render_pass.set_pipeline(&self.light_render_pipeline);
       // render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
 
       render_pass.set_pipeline(self.render_pipelines.get_pipeline(&self.active_pipeline).unwrap());
-      for model_tuple in self.model_renderer.get_rendering_models() {
+      for (model, buffer, num_instances) in self.model_renderer.get_rendering_models() {
         // println!("Rendering model: {:?}, {:?}", &model_tuple.0, &model_tuple.1);
-        render_pass.set_vertex_buffer(1, model_tuple.1.slice(..));
+        render_pass.set_vertex_buffer(1, buffer.slice(..));
         match &self.active_pipeline {
           RenderPipelineKey::PointLightPipeline => {
             render_pass.set_bind_group(3, &self.point_light.shadow_dt_bind_group, &[]);
-            render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.point_light.light_shadow_bind_group);
+            render_pass.draw_model_instanced(model, 0..num_instances as u32, &self.camera_bind_group, &self.point_light.light_shadow_bind_group);
           },
           _ => {
-            render_pass.draw_model_instanced(&model_tuple.0, 0..1, &self.camera_bind_group, &self.light_bind_group);
+            render_pass.draw_model_instanced(model, 0..num_instances as  u32, &self.camera_bind_group, &self.light_bind_group);
           }
         }
       }
@@ -573,10 +572,10 @@ impl Scene {
   pub async fn load_model(&mut self, filename: &str, instances: Option<Vec<Instance>>, component_key: ComponentKey) -> Result<RenderableModel, EngineError> {
     let load_res = self.model_renderer.load_model(filename, instances, component_key, &self.device, &self.queue, &self.texture_bind_group_layout).await;
     if let Ok(model) = load_res {
-      return Ok(model)
+      Ok(model)
     } else {
       println!("model load failed");
-      return load_res;
+      load_res
     }
   }
 

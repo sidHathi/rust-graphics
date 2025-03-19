@@ -1,8 +1,8 @@
-use crate::{graphics::{get_render_pipeline, ModelVertex, Texture}, playground::{pg_triangle::DrawPgTriangle, pg_vertex}};
+use crate::{graphics::{get_render_pipeline, Texture}, playground::{pg_vertex}};
 
-use super::{pg_cube::{self, PgCube}, pg_triangle::{self, PgTriangle}};
-use cgmath::{Point3, Vector3};
-use wgpu::util::DeviceExt;
+use super::{pg_cube::{self, PgCube}, pg_triangle::{PgTriangle}};
+use cgmath::{Point3};
+
 use winit::{event::WindowEvent, window::Window};
 
 pub struct PgState {
@@ -60,9 +60,7 @@ impl PgState {
     let surface_caps = surface.get_capabilities(&adapter);
 
     let surface_format = surface_caps.formats.iter()
-      .copied()
-      .filter(|f| f.is_srgb())
-      .next()
+      .copied().find(|f| f.is_srgb())
       .unwrap_or(surface_caps.formats[0]);
     let config = wgpu::SurfaceConfiguration {
       usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -145,11 +143,11 @@ impl PgState {
   }
 
 
-  pub fn input(&mut self, event: &WindowEvent) -> bool {
+  pub fn input(&mut self, _event: &WindowEvent) -> bool {
     false
   }
 
-  pub fn update(&mut self, dt: instant::Duration) {
+  pub fn update(&mut self, _dt: instant::Duration) {
 
   }
 

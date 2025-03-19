@@ -1,6 +1,6 @@
 use std::mem;
 use std::ops::Range;
-use wgpu::RenderPass;
+
 
 use super::texture::Texture;
 
@@ -18,43 +18,40 @@ impl Material {
     name: &str,
     diffuse_texture: Texture,
     normal_texture: Texture,
-    layout: &wgpu::BindGroupLayout
+    layout: &wgpu::BindGroupLayout,
   ) -> Self {
-    let bind_group = device.create_bind_group(
-      &wgpu::BindGroupDescriptor {
-        layout,
-        label: Some(name),
-        entries: &[
-          wgpu::BindGroupEntry {
-            binding: 0,
-            resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-          },
-          wgpu::BindGroupEntry {
-            binding: 1,
-            resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-          },
-          // NEW!
-          wgpu::BindGroupEntry {
-            binding: 2,
-            resource: wgpu::BindingResource::TextureView(&normal_texture.view),
-          },
-          wgpu::BindGroupEntry {
-            binding: 3,
-            resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
-          },
-        ]
-      }
-    );
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+      layout,
+      label: Some(name),
+      entries: &[
+        wgpu::BindGroupEntry {
+          binding: 0,
+          resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+        },
+        wgpu::BindGroupEntry {
+          binding: 1,
+          resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+        },
+        // NEW!
+        wgpu::BindGroupEntry {
+          binding: 2,
+          resource: wgpu::BindingResource::TextureView(&normal_texture.view),
+        },
+        wgpu::BindGroupEntry {
+          binding: 3,
+          resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
+        },
+      ],
+    });
 
     Self {
       name: String::from(name),
       diffuse_texture,
       normal_texture,
-      bind_group
+      bind_group,
     }
   }
 }
-
 
 #[derive(Debug)]
 pub struct Mesh {
@@ -69,7 +66,7 @@ pub struct Mesh {
 pub struct Model {
   pub meshes: Vec<Mesh>,
   pub materials: Vec<Material>,
-  pub bounds: [(f32, f32); 3]
+  pub bounds: [(f32, f32); 3],
 }
 
 pub trait Vertex {
@@ -110,23 +107,23 @@ impl Vertex for ModelVertex {
         wgpu::VertexAttribute {
           offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
           shader_location: 3,
-          format: wgpu::VertexFormat::Float32x3
+          format: wgpu::VertexFormat::Float32x3,
         },
         wgpu::VertexAttribute {
           offset: mem::size_of::<[f32; 11]>() as wgpu::BufferAddress,
           shader_location: 4,
-          format: wgpu::VertexFormat::Float32x3
+          format: wgpu::VertexFormat::Float32x3,
         },
-      ]
+      ],
     }
   }
 }
 
 pub trait DrawModel<'a> {
   fn draw_mesh(
-    &mut self, 
-    mesh: &'a Mesh, 
-    material: &'a Material, 
+    &mut self,
+    mesh: &'a Mesh,
+    material: &'a Material,
     camera_bind_group: &'a wgpu::BindGroup,
     light_bind_broup: &'a wgpu::BindGroup,
   );
@@ -137,22 +134,22 @@ pub trait DrawModel<'a> {
     material: &'a Material,
     instances: std::ops::Range<u32>,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
 
   fn draw_model(
-    &mut self, 
-    model: &'a Model, 
+    &mut self,
+    model: &'a Model,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
-  
+
   fn draw_model_instanced(
     &mut self,
     model: &'a Model,
     instances: Range<u32>,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
 
   fn draw_model_instanced_with_material(
@@ -165,15 +162,18 @@ pub trait DrawModel<'a> {
   );
 }
 
-impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
+impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a>
+where
+  'b: 'a,
+{
   fn draw_mesh(
-    &mut self, 
-    mesh: &'b Mesh, 
-    material: &'a Material, 
+    &mut self,
+    mesh: &'b Mesh,
+    material: &'a Material,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   ) {
-      self.draw_mesh_instanced(mesh, material, 0..1, camera_bind_group, light_bind_group);
+    self.draw_mesh_instanced(mesh, material, 0..1, camera_bind_group, light_bind_group);
   }
 
   fn draw_mesh_instanced(
@@ -184,21 +184,21 @@ impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     camera_bind_group: &'a wgpu::BindGroup,
     light_bind_group: &'a wgpu::BindGroup,
   ) {
-      self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-      self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-      self.set_bind_group(0, &material.bind_group, &[]);
-      self.set_bind_group(1, camera_bind_group, &[]);
-      self.set_bind_group(2, light_bind_group, &[]);
-      self.draw_indexed(0..mesh.num_elements, 0, instances);
+    self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+    self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+    self.set_bind_group(0, &material.bind_group, &[]);
+    self.set_bind_group(1, camera_bind_group, &[]);
+    self.set_bind_group(2, light_bind_group, &[]);
+    self.draw_indexed(0..mesh.num_elements, 0, instances);
   }
 
   fn draw_model(
-    &mut self, 
-    model: &'b Model, 
+    &mut self,
+    model: &'b Model,
     camera_bind_group: &'b wgpu::BindGroup,
     light_bind_group: &'b wgpu::BindGroup,
   ) {
-      self.draw_model_instanced(model, 0..1, camera_bind_group, light_bind_group)
+    self.draw_model_instanced(model, 0..1, camera_bind_group, light_bind_group)
   }
 
   fn draw_model_instanced(
@@ -206,11 +206,17 @@ impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     model: &'b Model,
     instances: std::ops::Range<u32>,
     camera_bind_group: &'b wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   ) {
     for mesh in &model.meshes {
-        let material = &model.materials[mesh.material];
-        self.draw_mesh_instanced(mesh, material, instances.clone(), camera_bind_group, light_bind_group);
+      let material = &model.materials[mesh.material];
+      self.draw_mesh_instanced(
+        mesh,
+        material,
+        instances.clone(),
+        camera_bind_group,
+        light_bind_group,
+      );
     }
   }
 
@@ -223,7 +229,13 @@ impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     light_bind_group: &'b wgpu::BindGroup,
   ) {
     for mesh in &model.meshes {
-      self.draw_mesh_instanced(mesh, material, instances.clone(), camera_bind_group, light_bind_group);
+      self.draw_mesh_instanced(
+        mesh,
+        material,
+        instances.clone(),
+        camera_bind_group,
+        light_bind_group,
+      );
     }
   }
 }
@@ -233,7 +245,7 @@ pub trait DrawLight<'a> {
     &mut self,
     mesh: &'a Mesh,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
 
   fn draw_light_mesh_instanced(
@@ -241,31 +253,34 @@ pub trait DrawLight<'a> {
     mesh: &'a Mesh,
     instances: std::ops::Range<u32>,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
 
   fn draw_light_model(
-    &mut self, 
-    model: &'a Model, 
+    &mut self,
+    model: &'a Model,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
-  
+
   fn draw_light_model_instanced(
     &mut self,
     model: &'a Model,
     instances: std::ops::Range<u32>,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
 }
 
-impl<'a, 'b> DrawLight<'b> for wgpu::RenderPass<'a> where 'b: 'a {
+impl<'a, 'b> DrawLight<'b> for wgpu::RenderPass<'a>
+where
+  'b: 'a,
+{
   fn draw_light_mesh(
     &mut self,
     mesh: &'a Mesh,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   ) {
     self.draw_light_mesh_instanced(mesh, 0..1, camera_bind_group, light_bind_group);
   }
@@ -275,7 +290,7 @@ impl<'a, 'b> DrawLight<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     mesh: &'a Mesh,
     instances: std::ops::Range<u32>,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   ) {
     self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
     self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -285,20 +300,20 @@ impl<'a, 'b> DrawLight<'b> for wgpu::RenderPass<'a> where 'b: 'a {
   }
 
   fn draw_light_model(
-    &mut self, 
-    model: &'a Model, 
+    &mut self,
+    model: &'a Model,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   ) {
     self.draw_light_model_instanced(model, 0..1, camera_bind_group, light_bind_group)
   }
-  
+
   fn draw_light_model_instanced(
     &mut self,
     model: &'a Model,
     instances: std::ops::Range<u32>,
     camera_bind_group: &'a wgpu::BindGroup,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   ) {
     for mesh in &model.meshes {
       self.draw_light_mesh_instanced(mesh, instances.clone(), camera_bind_group, light_bind_group);
@@ -307,39 +322,30 @@ impl<'a, 'b> DrawLight<'b> for wgpu::RenderPass<'a> where 'b: 'a {
 }
 
 pub trait ShadowMapModel<'a> {
-  fn shadow_map_mesh(
-    &mut self, 
-    mesh: &'a Mesh, 
-    light_bind_broup: &'a wgpu::BindGroup,
-  );
+  fn shadow_map_mesh(&mut self, mesh: &'a Mesh, light_bind_broup: &'a wgpu::BindGroup);
 
   fn shadow_map_mesh_instanced(
     &mut self,
     mesh: &'a Mesh,
     instances: std::ops::Range<u32>,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
 
-  fn shadow_map_model(
-    &mut self, 
-    model: &'a Model, 
-    light_bind_group: &'a wgpu::BindGroup
-  );
-  
+  fn shadow_map_model(&mut self, model: &'a Model, light_bind_group: &'a wgpu::BindGroup);
+
   fn shadow_map_model_instanced(
     &mut self,
     model: &'a Model,
     instances: Range<u32>,
-    light_bind_group: &'a wgpu::BindGroup
+    light_bind_group: &'a wgpu::BindGroup,
   );
 }
 
-impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
-  fn shadow_map_mesh(
-    &mut self, 
-    mesh: &'b Mesh,  
-    light_bind_group: &'b wgpu::BindGroup,
-  ) {
+impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a>
+where
+  'b: 'a,
+{
+  fn shadow_map_mesh(&mut self, mesh: &'b Mesh, light_bind_group: &'b wgpu::BindGroup) {
     self.shadow_map_mesh_instanced(mesh, 0..1, light_bind_group)
   }
 
@@ -347,7 +353,7 @@ impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     &mut self,
     mesh: &'b Mesh,
     instances: std::ops::Range<u32>,
-    light_bind_group: &'b wgpu::BindGroup
+    light_bind_group: &'b wgpu::BindGroup,
   ) {
     self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
     self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -355,11 +361,7 @@ impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     self.draw_indexed(0..mesh.num_elements, 0, instances);
   }
 
-  fn shadow_map_model(
-    &mut self, 
-    model: &'b Model, 
-    light_bind_group: &'b wgpu::BindGroup
-  ) {
+  fn shadow_map_model(&mut self, model: &'b Model, light_bind_group: &'b wgpu::BindGroup) {
     self.shadow_map_model_instanced(model, 0..1, light_bind_group)
   }
 
@@ -367,7 +369,7 @@ impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     &mut self,
     model: &'b Model,
     instances: Range<u32>,
-    light_bind_group: &'b wgpu::BindGroup
+    light_bind_group: &'b wgpu::BindGroup,
   ) {
     for mesh in &model.meshes {
       self.shadow_map_mesh_instanced(mesh, instances.clone(), light_bind_group);
@@ -377,8 +379,8 @@ impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
 
 // pub trait DrawShadowedModel<'a> {
 //   fn draw_shadowed_mesh(
-//     &mut self, 
-//     mesh: &'a Mesh, 
+//     &mut self,
+//     mesh: &'a Mesh,
 //     light_bind_broup: &'a wgpu::BindGroup,
 //   );
 
@@ -390,11 +392,11 @@ impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
 //   );
 
 //   fn draw_shadowed_model(
-//     &mut self, 
-//     model: &'a Model, 
+//     &mut self,
+//     model: &'a Model,
 //     light_bind_group: &'a wgpu::BindGroup
 //   );
-  
+
 //   fn draw_shadowed_model_instanced(
 //     &mut self,
 //     model: &'a Model,
@@ -405,8 +407,8 @@ impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
 
 // impl<'a, 'b> DrawShadowedModel<'a> for RenderPass<'b> where 'b: 'a {
 //   fn draw_shadowed_mesh(
-//     &mut self, 
-//     mesh: &'a Mesh, 
+//     &mut self,
+//     mesh: &'a Mesh,
 //     light_bind_broup: &'a wgpu::BindGroup,
 //   ) {
 //     todo!()
@@ -422,8 +424,8 @@ impl<'a, 'b> ShadowMapModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
 //   }
 
 //   fn draw_shadowed_model(
-//     &mut self, 
-//     model: &'a Model, 
+//     &mut self,
+//     model: &'a Model,
 //     light_bind_group: &'a wgpu::BindGroup
 //   ) {
 //     todo!()

@@ -5,4 +5,4 @@ mod light_shadow_uniform;
 mod utils;
 
 pub use directional_light::DirectionalLight;
-pub use point_light::PointLight;
+pub use point_light::{PointLight, PointLightConstructionProps};

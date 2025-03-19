@@ -1,4 +1,4 @@
-use std::num::NonZeroU32;
+
 
 use image::GenericImageView;
 use anyhow::*;
@@ -75,7 +75,7 @@ impl Texture {
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     img: &image::DynamicImage,
-    label: Option<&str>,
+    _label: Option<&str>,
     is_normal_map: bool,
   ) -> Result<Self> {
     let format = if is_normal_map {

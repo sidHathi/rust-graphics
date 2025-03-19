@@ -1,4 +1,4 @@
-use cgmath::{Point3, Vector3};
+use cgmath::{Point3};
 use winit::event::{KeyboardInput, WindowEvent};
 
 use crate::engine::{collisions::Collision, component_store::ComponentKey, errors::EngineError, Scene};
@@ -74,7 +74,7 @@ impl Event {
         ..
       } => Some(Event {
         key: EventKey::KeyboardEvent,
-        data: EventData::KeyboardEvent(input.clone())
+        data: EventData::KeyboardEvent(*input)
       }),
       _ => None
     }
@@ -83,13 +83,13 @@ impl Event {
 
 pub trait EventListener {
   fn handle_event(&mut self, _: Event) {
-    ()
+    
   }
 
   fn add_event_listener(&mut self, scene: &mut Scene, component_key: &ComponentKey, event_key: &EventKey) -> Result<(), EngineError> {
     let listener: fn(&mut dyn EventListener, Event) = |component: &mut dyn EventListener, event: Event| {
       component.handle_event(event);
     };
-    scene.event_manager.add_listener(component_key.clone(), event_key.clone(), listener)
+    scene.event_manager.add_listener(*component_key, *event_key, listener)
   }
 }

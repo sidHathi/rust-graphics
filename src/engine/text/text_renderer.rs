@@ -1,15 +1,15 @@
 use core::f32;
-use std::{collections::HashMap, hash::Hash, mem, sync::{Arc, Mutex, RwLock}};
+use std::{collections::HashMap, sync::{Arc, Mutex, RwLock}};
 
-use cgmath::{Matrix4, SquareMatrix, Vector3, Vector4};
+use cgmath::{Matrix4, SquareMatrix};
 use wgpu::util::DeviceExt;
-use glyph_brush::{ab_glyph::FontArc, BrushError, BuiltInLineBreaker, Color, FontId, GlyphBrush, GlyphBrushBuilder, Rectangle, Section, Text};
+use glyph_brush::{ab_glyph::FontArc, BrushError, FontId, GlyphBrush, GlyphBrushBuilder};
 
-use crate::{engine::{errors::EngineError, text::{text_vertex::TextModelData, VerticalTextAlignment}, transform_queue::TransformQueue, transforms::{ComponentTransform, GlobalTransform}}, graphics::{get_render_pipeline, Texture}};
+use crate::{engine::{text::{text_vertex::TextModelData, VerticalTextAlignment}, transform_queue::TransformQueue, transforms::{ComponentTransform, GlobalTransform}}, graphics::{get_render_pipeline, Texture}};
 
 use super::{cg_text::CGText, font::FontFace, text_vertex::TextVertex};
 
-pub const FONT_DATA_ARRAYS: [(FontFace, &'static [u8]); 2] = [
+pub const FONT_DATA_ARRAYS: [(FontFace, &[u8]); 2] = [
   (FontFace::Default, include_bytes!("AtkinsonHyperlegible-Bold.ttf")),
   (FontFace::Atkinson, include_bytes!("AtkinsonHyperlegible-Bold.ttf")),
 ];
@@ -48,9 +48,9 @@ pub struct TextRenderer {
 impl TextRenderer {
   pub fn new(
     device: &wgpu::Device, 
-    queue: &wgpu::Queue,
+    _queue: &wgpu::Queue,
     config: &wgpu::SurfaceConfiguration,
-    surface_format: wgpu::TextureFormat,
+    _surface_format: wgpu::TextureFormat,
     camera_bind_group_layout: &wgpu::BindGroupLayout,
     light_bind_group_layout: &wgpu::BindGroupLayout,
   ) -> Self {
@@ -92,7 +92,7 @@ impl TextRenderer {
     let text_index_buffer = device.create_buffer_init(
       &wgpu::util::BufferInitDescriptor {
         label: Some("Glyph index buffer"),
-        contents: bytemuck::cast_slice(&[0 as u32; 2048] as &[u32]),
+        contents: bytemuck::cast_slice(&[0_u32; 2048] as &[u32]),
         usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST
       }
     );
@@ -192,7 +192,7 @@ impl TextRenderer {
           source: wgpu::ShaderSource::Wgsl(include_str!("text_shader.wgsl").into()),
       };
       get_render_pipeline(
-        &device,
+        device,
         &render_pipeline_layout,
         config.format,
         Some(Texture::DEPTH_FORMAT),
@@ -225,7 +225,7 @@ impl TextRenderer {
     &self,
     text: TextRenderData, 
     queue: &wgpu::Queue,
-    config: &wgpu::SurfaceConfiguration
+    _config: &wgpu::SurfaceConfiguration
   ) -> Result<(u32, u32), BrushError> {
     let section = text.text.get_glyph_section();
 
@@ -247,15 +247,15 @@ impl TextRenderer {
     self.glyph_brush.lock().unwrap().queue(&section);
     let res = self.glyph_brush.lock().unwrap().process_queued(
       |rect, tex_data| {
-        if tex_data.len() > 0 {
+        if !tex_data.is_empty() {
           // println!("{:?}", tex_data);
           queue.write_texture(
             wgpu::ImageCopyTexture {
               texture: &self.texture.texture,
               mip_level: 0,
               origin: wgpu::Origin3d {
-                x: rect.min[0] as u32,
-                y: rect.min[1] as u32,
+                x: rect.min[0],
+                y: rect.min[1],
                 z: 0,
               },
               aspect: wgpu::TextureAspect::All,
@@ -263,12 +263,12 @@ impl TextRenderer {
             tex_data,
             wgpu::ImageDataLayout {
               offset: 0,
-              bytes_per_row: Some(rect.width() as u32),
+              bytes_per_row: Some(rect.width()),
               rows_per_image: None,
             },
             wgpu::Extent3d {
-              width: rect.width() as u32,
-              height: rect.height() as u32,
+              width: rect.width(),
+              height: rect.height(),
               depth_or_array_layers: 1,
             },
           );
@@ -276,17 +276,17 @@ impl TextRenderer {
       },
       |vertex_data| {
         // println!("Y coords for text glyph {}, {}", vertex_data.pixel_coords.max.y, vertex_data.pixel_coords.min.y);
-        if vertex_data.pixel_coords.max.y > max_y_pos.read().unwrap().clone() {
+        if vertex_data.pixel_coords.max.y > *max_y_pos.read().unwrap() {
           *max_y_pos.write().unwrap() = vertex_data.pixel_coords.max.y;
-        } else if vertex_data.pixel_coords.max.y < min_y_pos.read().unwrap().clone() {
+        } else if vertex_data.pixel_coords.max.y < *min_y_pos.read().unwrap() {
           *min_y_pos.write().unwrap() = vertex_data.pixel_coords.max.y;
         }
-        if vertex_data.pixel_coords.min.y > max_y_pos.read().unwrap().clone() {
+        if vertex_data.pixel_coords.min.y > *max_y_pos.read().unwrap() {
           *max_y_pos.write().unwrap() = vertex_data.pixel_coords.min.y;
-        } else if vertex_data.pixel_coords.min.y < min_y_pos.read().unwrap().clone() {
+        } else if vertex_data.pixel_coords.min.y < *min_y_pos.read().unwrap() {
           *min_y_pos.write().unwrap() = vertex_data.pixel_coords.min.y;
         }
-        let y_offset = vertex_data.pixel_coords.max.y - vertex_data.pixel_coords.min.y;
+        let _y_offset = vertex_data.pixel_coords.max.y - vertex_data.pixel_coords.min.y;
         let minX_scaled = vertex_data.pixel_coords.min.x;
         let maxX_scaled = vertex_data.pixel_coords.max.x;
         let minY_scaled = vertex_data.pixel_coords.min.y;
@@ -312,7 +312,7 @@ impl TextRenderer {
         for vert in quad_vertices {
           text_vertices.lock().unwrap().push(vert);
         }
-        let curr_offset = index_offset.lock().unwrap().clone();
+        let curr_offset = *index_offset.lock().unwrap();
         text_indices.lock().unwrap().push(curr_offset);
         text_indices.lock().unwrap().push(curr_offset + 2);
         text_indices.lock().unwrap().push(curr_offset + 1);
@@ -335,11 +335,11 @@ impl TextRenderer {
     let num_text_vertices = text_vertex_vec.len() as u32;
 
     if num_text_indices == 0 || num_text_vertices == 0 {
-      return Ok((self.num_text_vertices.read().unwrap().clone(), self.num_text_indices.read().unwrap().clone()))
+      return Ok((*self.num_text_vertices.read().unwrap(), *self.num_text_indices.read().unwrap()))
     }
 
-    let max_y_unwrapped = max_y_pos.read().unwrap().clone();
-    let min_y_unwrapped = min_y_pos.read().unwrap().clone();
+    let max_y_unwrapped = *max_y_pos.read().unwrap();
+    let min_y_unwrapped = *min_y_pos.read().unwrap();
     // println!("Text index vec: {:?} contains {} indices", text_index_vec, num_text_indices);
     // println!("Text vertex vec: {:?} contains {} vertices", text_vertex_vec, num_text_vertices);
     // println!("max y pos for text: {}", max_y_unwrapped);
@@ -358,7 +358,7 @@ impl TextRenderer {
 
     *self.num_text_vertices.write().unwrap() = num_text_vertices;
     *self.num_text_indices.write().unwrap() = num_text_indices;
-    return Ok((num_text_vertices, num_text_indices))
+    Ok((num_text_vertices, num_text_indices))
   }
 
   pub fn start_component_render(&mut self, transform: ComponentTransform) {
@@ -374,7 +374,7 @@ impl TextRenderer {
     let font_id = self.font_map.get(&text.font_face).unwrap_or(&FontId(0));
     let render_data: TextRenderData = TextRenderData {
       global_transform,
-      font_id: font_id.clone(),
+      font_id: *font_id,
       text
     };
 
@@ -403,7 +403,7 @@ impl<'a, 'b> DrawText<'b> for wgpu::RenderPass<'a> where 'b: 'a {
   fn draw_text(
     &mut self,
     text_renderer: &'a TextRenderer,
-    device: &'a wgpu::Device, 
+    _device: &'a wgpu::Device, 
     queue: &'a wgpu::Queue,
     config: &'a wgpu::SurfaceConfiguration,
     camera_bind_group: &'a wgpu::BindGroup,
@@ -412,7 +412,7 @@ impl<'a, 'b> DrawText<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     self.set_pipeline(&text_renderer.text_render_pipeline);
     for text in text_renderer.render_list.iter() {
       // load text info into buffers
-      if let Ok((num_vertices, num_indices)) = text_renderer.load_text_into_buffers(text.clone(), queue, config) {
+      if let Ok((_num_vertices, num_indices)) = text_renderer.load_text_into_buffers(text.clone(), queue, config) {
         // println!("Text buffer loaded successfuly with {} indices, {} vertices", num_indices, num_vertices);
         // draw the buffers
         self.set_vertex_buffer(1, text_renderer.text_model_buffer.slice(..));

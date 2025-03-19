@@ -1,4 +1,4 @@
-use cgmath::{ortho, perspective, InnerSpace, Matrix4, Point3, Rad, Vector3};
+use cgmath::{ortho, perspective, Angle, InnerSpace, Matrix4, Point3, Rad, Vector3};
 
 use crate::graphics::OPENGL_TO_WGPU_MATRIX;
 
@@ -13,38 +13,55 @@ pub struct LightShadowUniform {
   pub color: [f32; 4],
 }
 
+pub struct LightShadowUniformConstructionProps {
+  pub pos: Point3<f32>,
+  pub fovy: Rad<f32>,
+  pub znear: f32,
+  pub zfar: f32,
+  pub aspect: f32,  
+  pub pitch: Rad<f32>,
+  pub yaw: Rad<f32>,
+  pub color: Vector3<f32>,
+}
+
 impl LightShadowUniform {
-  pub fn new_perspective(
-    pos: Point3<f32>,
-    fovy: Rad<f32>,
-    znear: f32,
-    zfar: f32,
-    aspect: f32,
-    pitch: Rad<f32>,
-    yaw: Rad<f32>,
-    color: Vector3<f32>,
-  ) -> Self {
-    let proj_matrix = OPENGL_TO_WGPU_MATRIX * perspective(fovy, aspect, znear, zfar);
-
-    let (sin_pitch, cos_pitch) = pitch.0.sin_cos();
-    let (sin_yaw, cos_yaw) = yaw.0.sin_cos();
-    let view_matrix = Matrix4::look_to_rh(
+  pub fn new_perspective(construction_props: LightShadowUniformConstructionProps) -> Self {
+    let LightShadowUniformConstructionProps {
       pos,
-      Vector3::new(
-          cos_pitch * cos_yaw,
-          sin_pitch,
-          cos_pitch * sin_yaw
-      ).normalize(),
-      Vector3::unit_y(),
-    );
-    let view_proj_matrix = proj_matrix * view_matrix;
-    let view_pos_vec = pos.to_homogeneous();
-
+      fovy,
+      znear,
+      zfar,
+      aspect,   
+      pitch,
+      yaw,
+      color,
+    } = construction_props;
+    // Correctly calculate direction vector from pitch and yaw
+    let direction = Vector3::new(
+      yaw.cos() * pitch.cos(),
+      pitch.sin(),                
+      yaw.sin() * pitch.cos()
+    ).normalize();
+    
+    // Create target point that the light looks at
+    let target = pos + direction;
+    
+    // Use right-handed view matrix with correct up vector
+    // Try different up vectors if shadows are still flipped
+    let up = Vector3::new(0.0, 1.0, 0.0);
+    let view = Matrix4::look_at_rh(pos, target, up);
+    
+    // Create depth-corrected perspective matrix for WebGPU
+    let proj = cgmath::perspective(fovy, aspect, znear, zfar);
+    
+    // Try this if shadows are flipped vertically:
+    // let mut proj = cgmath::perspective(fovy, aspect, znear, zfar);
+    // proj.y.y *= -1.0; // Flip y-axis
     Self {
-      view_pos: view_pos_vec.into(),
-      view_proj: view_proj_matrix.into(),
-      direction: view_pos_vec.into(),
-      color: color.extend(1.).into()
+      view_pos: pos.to_homogeneous().into(),
+      view_proj: (proj * view).into(),
+      direction: direction.extend(0.0).into(),
+      color: color.extend(0.0).into(),
     }
   }
 

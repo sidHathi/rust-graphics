@@ -1,4 +1,4 @@
-use cgmath::Vector3;
+
 
 use super::State;
 
@@ -41,6 +41,6 @@ impl StateInterpolator {
   }
 
   pub fn complete(&self) -> bool {
-    return self.time_elapsed >= self.time
+    self.time_elapsed >= self.time
   }
 }

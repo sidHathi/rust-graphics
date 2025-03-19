@@ -12,15 +12,9 @@ pub fn log_buffer_data(
     .open(file_path);
   if let Ok(file) = file_res {
     let mut writer = io::BufWriter::new(file);
-    if let Err(e) = writer.write(header_str.as_bytes()) {
-      return Err(e)
-    }
-    if let Err(e) = writer.write_all(data) {
-      return Err(e)
-    }
-    if let Err(e) = writer.flush() {
-      return Err(e)
-    }
+    writer.write_all(header_str.as_bytes())?;
+    writer.write_all(data)?;
+    writer.flush()?;
     return Ok(())
   }
   Err(file_res.unwrap_err())

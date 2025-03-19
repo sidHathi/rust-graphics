@@ -5,7 +5,7 @@ use cfg_if::cfg_if;
 use wgpu::util::{
   DeviceExt
 };
-use crate::graphics::model;
+
 
 use super::texture::Texture;
 use super::model::{
@@ -31,11 +31,12 @@ pub async fn load_model(
   queue: &wgpu::Queue,
   layout: &wgpu::BindGroupLayout
 ) -> anyhow::Result<Model> {
+  println!("Loading model file: {}", file_name);
   let obj_text = load_string(file_name).await?;
   let obj_cursor = Cursor::new(obj_text);
   let mut obj_reader = BufReader::new(obj_cursor);
 
-  let (models, obj_materials) = tobj::load_obj_buf_async(
+  let (models, obj_materials_result) = tobj::load_obj_buf_async(
     &mut obj_reader, 
     &tobj::LoadOptions {
       triangulate: true,
@@ -43,18 +44,64 @@ pub async fn load_model(
       ..Default::default()
     }, 
     |p| async move {
-      let mat_text = load_string(&p).await.unwrap();
-      tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
+      println!("Loading material file: {}", p);
+      let mat_text = match load_string(&p).await {
+          Ok(text) => text,
+          Err(e) => {
+              println!("Failed to load material file {}: {:?}", p, e);
+              return Err(tobj::LoadError::OpenFileFailed);
+          }
+      };
+      let mtl_result = tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)));
+      if let Err(e) = &mtl_result {
+          println!("Failed to parse material file {}: {:?}", p, e);
+      }
+      mtl_result
     }
   ).await?;
 
   let mut materials: Vec<Material> = Vec::new();
-  for m in obj_materials? {
-    let diffuse_texture = load_texture(&m.diffuse_texture, false, device, queue).await?;
-    let normal_texture = load_texture(&m.normal_texture, true, device, queue).await?;
+  
+  match &obj_materials_result {
+      Ok(obj_materials) => {
+          println!("Successfully loaded {} materials", obj_materials.len());
+          for m in obj_materials.iter() {
+              println!("Material: {} (diffuse={}, normal={})", m.name, m.diffuse_texture, m.normal_texture);
+          }
+      }
+      Err(e) => {
+          println!("Failed to load materials: {:?}", e);
+          // Continue without materials
+      }
+  }
+  
+  let obj_materials = match obj_materials_result {
+      Ok(mats) => mats,
+      Err(e) => {
+          println!("Skipping materials due to error: {:?}", e);
+          Vec::new()
+      }
+  };
+  
+  for m in obj_materials {
+    println!("Loading textures for material {}: diffuse={}, normal={}", m.name, m.diffuse_texture, m.normal_texture);
+    let diffuse_texture = match load_texture(&m.diffuse_texture, false, device, queue).await {
+        Ok(tex) => tex,
+        Err(e) => {
+            println!("Failed to load diffuse texture {}: {:?}", m.diffuse_texture, e);
+            return Err(e);
+        }
+    };
+    let normal_texture = match load_texture(&m.normal_texture, true, device, queue).await {
+        Ok(tex) => tex,
+        Err(e) => {
+            println!("Failed to load normal texture {}: {:?}", m.normal_texture, e);
+            return Err(e);
+        }
+    };
 
     materials.push(Material::new(
-      &device,
+      device,
       &m.name,
       diffuse_texture,
       normal_texture,
@@ -154,7 +201,7 @@ pub async fn load_model(
 
       for (i, n) in triangles_included.into_iter().enumerate() {
         let denom = 1.0 / n as f32;
-        let mut v = &mut vertices[i];
+        let v = &mut vertices[i];
         v.tangent = (cgmath::Vector3::from(v.tangent) * denom).into();
         v.bitangent = (cgmath::Vector3::from(v.bitangent) * denom).into();
       }
@@ -184,7 +231,7 @@ pub async fn load_model(
     })
     .collect::<Vec<_>>();
   let mut bounds = [(xmin, xmax), (ymin, ymax), (zmin, zmax)];
-  if meshes.len() < 1 {
+  if meshes.is_empty() {
     bounds = [(0., 0.), (0., 0.), (0., 0.)];
   }
   

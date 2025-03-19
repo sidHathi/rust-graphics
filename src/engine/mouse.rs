@@ -1,4 +1,4 @@
-use cgmath::{Angle, EuclideanSpace, InnerSpace, MetricSpace, Vector2, Vector3, Vector4};
+use cgmath::{Angle, EuclideanSpace, InnerSpace, MetricSpace, Vector2, Vector3};
 use wgpu::SurfaceConfiguration;
 
 use crate::{engine::{collisions::CollisionManager, events::{Event, EventData, EventKey, EventManager}}, graphics::{Camera, Projection}};
@@ -66,7 +66,7 @@ impl Mouse {
       let mut intersections = collision_manager.intersect_ray(&ray_unwrapped, self.max_dist);
       intersections.sort_by(|a, b| b.loc.distance(ray_unwrapped.origin).partial_cmp(&a.loc.distance(ray_unwrapped.origin)).unwrap_or(std::cmp::Ordering::Equal));
       let next_intersect = intersections.pop();
-      self.last_intersect = self.closest_intersect.clone();
+      self.last_intersect = self.closest_intersect;
       self.closest_intersect = next_intersect;
     }
   }
@@ -85,16 +85,16 @@ impl Mouse {
         event_manager.handle_event(Event {
           key: EventKey::MouseHoverStartEvent(intersect.component),
           data: EventData::MouseHoverStartEvent {
-            component: intersect.component.clone(),
+            component: intersect.component,
             collider_idx: intersect.collider_idx,
-            intersect_loc: intersect.loc.clone()
+            intersect_loc: intersect.loc
           }
         });
         if let Some(last) = self.last_intersect {
           event_manager.handle_event(Event {
             key: EventKey::MouseHoverEndEvent(last.component),
             data: EventData::MouseHoverEndEvent {
-              component: last.component.clone(),
+              component: last.component,
               collider_idx: last.collider_idx,
             }
           });
@@ -103,21 +103,19 @@ impl Mouse {
       event_manager.handle_event(Event {
         key: EventKey::MouseHoveringEvent(intersect.component),
         data: EventData::MouseHoveringEvent {
-          component: intersect.component.clone(),
+          component: intersect.component,
           collider_idx: intersect.collider_idx,
-          intersect_loc: intersect.loc.clone()
+          intersect_loc: intersect.loc
         }
       });
-    } else {
-      if let Some(last) = self.last_intersect {
-        event_manager.handle_event(Event {
-          key: EventKey::MouseHoverEndEvent(last.component),
-          data: EventData::MouseHoverEndEvent {
-            component: last.component.clone(),
-            collider_idx: last.collider_idx,
-          }
-        });
-      }
+    } else if let Some(last) = self.last_intersect {
+      event_manager.handle_event(Event {
+        key: EventKey::MouseHoverEndEvent(last.component),
+        data: EventData::MouseHoverEndEvent {
+          component: last.component,
+          collider_idx: last.collider_idx,
+        }
+      });
     }
   }
 
@@ -126,9 +124,9 @@ impl Mouse {
       event_manager.handle_event(Event {
         key: EventKey::MouseSelectEvent(intersect.component),
         data: EventData::MouseSelectEvent {
-          component: intersect.component.clone(),
+          component: intersect.component,
           collider_idx: intersect.collider_idx,
-          intersect_loc: intersect.loc.clone()
+          intersect_loc: intersect.loc
         }
       });
     }

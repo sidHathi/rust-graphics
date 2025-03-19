@@ -62,8 +62,8 @@ impl ColliderTransform {
       return None
     }
     Some(GlobalTransform {
-      pos: self.cached_global_pos.unwrap().clone(),
-      rot: self.cached_global_rot.unwrap().clone()
+      pos: self.cached_global_pos.unwrap(),
+      rot: self.cached_global_rot.unwrap()
     })
   }
 
@@ -82,7 +82,7 @@ impl ColliderTransform {
     let pos = self.cached_global_pos.unwrap_or(self.relative_pos);
     let rotation_mat = Matrix4::from(rot);
     let translation_mat = Matrix4::from_translation(pos);
-    let combined = translation_mat * rotation_mat;
-    combined
+    
+    translation_mat * rotation_mat
   }
 }

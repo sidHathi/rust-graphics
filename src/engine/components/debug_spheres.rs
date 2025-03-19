@@ -1,12 +1,14 @@
-use std::{sync::{Arc, Mutex}};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use cgmath::{EuclideanSpace, Point3, Quaternion};
+use parking_lot::Mutex;
 
 use crate::engine::{component::ComponentFunctions, component_store::ComponentKey, events::EventListener, renderable_model::{ModelDims, RenderableModel}, state::StateListener, transforms::ModelTransform, Scene};
 
- const NET_DIM: u32 = 10;
- const NET_SPACING: f32 = 20.;
+ const NET_DIM: u32 = 5;
+ const NET_SPACING: f32 = 80.;
+ const MODEL_SIZE: f32 = 10.;
 
 pub struct DebugSpheres {
   key: ComponentKey,
@@ -35,7 +37,6 @@ impl ComponentFunctions for DebugSpheres {
   }
 
   fn update(&mut self, _: &mut crate::engine::Scene, _:instant::Duration) {
-    return;
   }
 
   fn render(&self,scene: &mut Scene) -> Result<(),crate::engine::errors::EngineError> {
@@ -44,18 +45,20 @@ impl ComponentFunctions for DebugSpheres {
     let half_offset = NET_SPACING * NET_DIM as f32 / 2.;
     for row in 0..NET_DIM {
       for col in 0..NET_DIM {
-        let x = row as f32 * NET_SPACING - half_offset;
-        let y = col as f32 * NET_SPACING - half_offset;
-        positions.push([x, y, 0.].into());
+        for depth in 0..NET_DIM {
+          let x = row as f32 * NET_SPACING - half_offset;
+          let y = col as f32 * NET_SPACING - half_offset;
+          let z = depth as f32 * NET_SPACING - half_offset;
+          positions.push([x, y, z].into());
+        }
       }
     }
 
     for pos in positions {
       if let Some(model) = &self.model {
-        println!("rendering model {:?}", model);
         let _ = model
           .transform(ModelTransform::local(pos.to_vec(), Quaternion::new(1., 0., 0., 0.)))
-          .dims(ModelDims::new(5., 5., 5.))
+          .dims(ModelDims::new(MODEL_SIZE, MODEL_SIZE, MODEL_SIZE))
           .opacity(1.)
           .render(scene);
       }
@@ -82,7 +85,7 @@ impl DebugSpheres {
       model: None,
     };
     let mem = Arc::new(Mutex::new(new_self));
-    mem.lock().unwrap().mem = Some(mem.clone());
+    mem.lock().mem = Some(mem.clone());
     mem
   }
 }

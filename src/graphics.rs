@@ -15,14 +15,12 @@ mod resources;
 mod lighting;
 mod iv_state;
 
-use state::State;
+
 pub use model::{
   Mesh,
-  Material,
   ModelVertex,
   Vertex,
   Model,
-  DrawLight,
   DrawModel,
   ShadowMapModel
 };
@@ -42,8 +40,8 @@ pub use camera::{
 };
 pub use lighting::*;
 
-use self::iv_state::IVState;
-use super::playground::pg_state::PgState;
+
+
 use super::engine::Scene;
 
 pub async fn run() {

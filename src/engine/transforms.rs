@@ -20,8 +20,8 @@ impl GlobalTransform {
   pub fn as_matrix(&self) -> Matrix4<f32> {
     let rotation_mat = Matrix4::from(self.rot);
     let translation_mat: Matrix4<f32> = Matrix4::from_translation(self.pos);
-    let combined = translation_mat * rotation_mat;
-    combined
+    
+    translation_mat * rotation_mat
   }
 }
 

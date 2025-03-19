@@ -14,4 +14,3 @@ pub use cg_text::{
   TextWrapStyle,
   VerticalTextAlignment,
 };
-pub use font::FontFace;

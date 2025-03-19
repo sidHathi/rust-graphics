@@ -1,10 +1,11 @@
-use std::{any::Any, sync::{Arc, Mutex, RwLock}};
+use std::{sync::Arc};
 
 use crate::sdf::{CubeSdf, SdfShape, Shape};
 
-use super::super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, model_renderer::ModelRenderer, renderable_model::{ModelDims, RenderableModel}, scene, state::{State, StateListener}, transforms::ModelTransform, util::random_quaternion, Scene};
-use cgmath::{Point3, Quaternion, Vector3};
+use super::super::{collisions::{Collider, SdfBoundary}, component::{AsyncCallbackHandler, Component, ComponentFunctions}, component_store::ComponentKey, errors::EngineError, events::{EventData, EventKey, EventListener}, renderable_model::{ModelDims, RenderableModel}, state::{State, StateListener}, transforms::ModelTransform, utils::random_quaternion, Scene};
+use cgmath::{Point3, Quaternion};
 use async_trait::async_trait;
+use parking_lot::Mutex;
 use winit::event::{ElementState, KeyboardInput};
 
 pub struct TestChildComponent {
@@ -14,7 +15,7 @@ pub struct TestChildComponent {
   model: Option<RenderableModel>,
   active: bool,
   should_set_state: bool,
-  collider: Option<Arc<RwLock<Collider>>>,
+  collider: Option<Arc<Mutex<Collider>>>,
   mem: Option<Arc<Mutex<Self>>>,
   opacity: f32,
   pub should_interp_state: bool,
@@ -50,7 +51,7 @@ impl ComponentFunctions for TestChildComponent {
     }
   }
 
-  fn update(&mut self, scene: &mut Scene, dt: instant::Duration) {
+  fn update(&mut self, scene: &mut Scene, _dt: instant::Duration) {
     if self.should_set_state {
       let quaternion = random_quaternion();
       // println!("setting new state: {:?}", quaternion);
@@ -76,7 +77,7 @@ impl ComponentFunctions for TestChildComponent {
       let rotation = rotation_state.get_quat().unwrap();
       model_transform.set_rot(rotation);
       if let Some(collider) = self.collider.clone() {
-        collider.write().unwrap().update_rot(rotation);
+        collider.lock().update_rot(rotation);
       }
     }
     
@@ -103,13 +104,13 @@ impl TestChildComponent {
       should_interp_state: false
     };
     let mem = Arc::new(Mutex::new(new_self));
-    mem.lock().unwrap().mem = Some(mem.clone());
+    mem.lock().mem = Some(mem.clone());
     mem
   }
 
-  pub async fn wait_then_interpolate(mem: Arc<Mutex<Self>>, args: ()) {
+  pub async fn wait_then_interpolate(mem: Arc<Mutex<Self>>, _args: ()) {
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-    mem.lock().unwrap().should_interp_state = true;
+    mem.lock().should_interp_state = true;
   }
 }
 
@@ -117,7 +118,7 @@ impl EventListener for TestChildComponent {
   fn handle_event(&mut self, event: super::super::events::Event) {
       match event.data {
         EventData::KeyboardEvent (KeyboardInput {
-          virtual_keycode: Some(key),
+          virtual_keycode: Some(_key),
           state,
           ..
         }) => {
@@ -137,7 +138,7 @@ impl EventListener for TestChildComponent {
 }
 
 impl AsyncCallbackHandler<()> for TestChildComponent {
-  fn handle_async_res(&mut self, data: ()) -> () {
+  fn handle_async_res(&mut self, _data: ()) {
     println!("callback triggered");
   }
 }

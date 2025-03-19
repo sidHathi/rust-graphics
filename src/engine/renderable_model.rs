@@ -1,10 +1,9 @@
-use core::num;
 use std::iter::repeat;
 
 use cgmath::Vector3;
 use crate::graphics::Model;
 
-use crate::graphics::Instance;
+
 
 use super::{component_store::ComponentKey, transforms::ModelTransform, Scene};
 
@@ -106,18 +105,18 @@ impl RenderSettings {
 
   pub fn to_render_instances(&self, model: &Model) -> Vec<RenderInstance> {
     let mut out: Vec<RenderInstance> = Vec::new();
-    let opacities = self.opacities.clone().unwrap_or(Vec::new());
-    let dims = self.dims.clone().unwrap_or(Vec::new());
-    let transforms = self.transforms.clone().unwrap_or(Vec::new());
+    let opacities = self.opacities.clone().unwrap_or_default();
+    let dims = self.dims.clone().unwrap_or_default();
+    let transforms = self.transforms.clone().unwrap_or_default();
     for i in 0..self.instances {
       let transform = transforms.get(i).unwrap_or(&ModelTransform::default()).clone();
       let model_size = model.bounds.map(|val| (val.1 - val.0).abs());
-      let dims = dims.get(i).unwrap_or(&ModelDims::empty()).clone();
+      let dims = *dims.get(i).unwrap_or(&ModelDims::empty());
       let scale = Vector3::new(dims.width.unwrap_or(model_size[0])/ model_size[0], dims.height.unwrap_or(model_size[1])/ model_size[1], dims.depth.unwrap_or(model_size[2])/ model_size[2]);
 
       out.push(RenderInstance {
         transform,
-        opacity: opacities.get(i).unwrap_or(&1.).clone(),
+        opacity: *opacities.get(i).unwrap_or(&1.),
         scale
       })
     }
@@ -135,7 +134,7 @@ impl RenderableModel {
   }
 
   pub fn render(&self, scene: &mut Scene) -> Result<(), super::errors::EngineError> {
-    let default_transform: ModelTransform = ModelTransform::default();
+    let _default_transform: ModelTransform = ModelTransform::default();
     scene.render_model(self, None)
   }
 
@@ -156,7 +155,7 @@ impl RenderableModel {
       dims: None,
       opacities: None
     };
-    return RenderableModelWithSettings(self.clone(), render_settings)
+    RenderableModelWithSettings(self.clone(), render_settings)
   }
 
   pub fn opacity(&self, opacity: f32) -> RenderableModelWithSettings {
@@ -166,7 +165,7 @@ impl RenderableModel {
       dims: None,
       opacities: Some(Vec::from([opacity]))
     };
-    return RenderableModelWithSettings(self.clone(), render_settings)
+    RenderableModelWithSettings(self.clone(), render_settings)
   }
 
   pub fn dims(&self, dims: ModelDims) -> RenderableModelWithSettings {
@@ -176,7 +175,7 @@ impl RenderableModel {
       dims: Some(Vec::from([dims])),
       opacities: None
     };
-    return RenderableModelWithSettings(self.clone(), render_settings)
+    RenderableModelWithSettings(self.clone(), render_settings)
   }
 
   pub fn width(&self, width: f32) -> RenderableModelWithSettings {
@@ -186,7 +185,7 @@ impl RenderableModel {
       dims: Some(Vec::from([ModelDims::from_width(width)])),
       opacities: None
     };
-    return RenderableModelWithSettings(self.clone(), render_settings)
+    RenderableModelWithSettings(self.clone(), render_settings)
   }
 
   pub fn height(&self, height: f32) -> RenderableModelWithSettings {
@@ -196,7 +195,7 @@ impl RenderableModel {
       dims: Some(Vec::from([ModelDims::from_height(height)])),
       opacities: None
     };
-    return RenderableModelWithSettings(self.clone(), render_settings)
+    RenderableModelWithSettings(self.clone(), render_settings)
   }
 
   pub fn depth(&self, depth: f32) -> RenderableModelWithSettings {
@@ -206,13 +205,13 @@ impl RenderableModel {
       dims: Some(Vec::from([ModelDims::from_depth(depth)])),
       opacities: None
     };
-    return RenderableModelWithSettings(self.clone(), render_settings)
+    RenderableModelWithSettings(self.clone(), render_settings)
   }
 }
 
 impl RenderableModelWithSettings {
   pub fn render(&self, scene: &mut Scene) -> Result<(), super::errors::EngineError> {
-    let transform = self.1.clone().transforms.unwrap_or(Vec::new()).get(0).unwrap_or(&ModelTransform::default()).clone(); 
+    let _transform = self.1.clone().transforms.unwrap_or_default().first().unwrap_or(&ModelTransform::default()).clone(); 
     scene.render_model(&self.0, Some(self.1.clone()))
   }
 
@@ -266,7 +265,7 @@ impl RenderableModelWithSettings {
 
   pub fn transform_instanced(&self, transforms: Vec<ModelTransform>) -> RenderableModelWithSettings {
     let mut safe_transform_vec = transforms.clone();
-    if safe_transform_vec.len() == 0 {
+    if safe_transform_vec.is_empty() {
       let mut render_settings = self.1.clone();
       render_settings.transforms = None;
       return Self(self.0.clone(), render_settings)
@@ -280,7 +279,7 @@ impl RenderableModelWithSettings {
 
   pub fn opacity_instanced(&self, opacities: Vec<f32>) -> RenderableModelWithSettings {
     let mut safe_opacity_vec = opacities.clone();
-    if safe_opacity_vec.len() == 0 {
+    if safe_opacity_vec.is_empty() {
       let mut render_settings = self.1.clone();
       render_settings.opacities = None;
       return Self(self.0.clone(), render_settings)
@@ -294,7 +293,7 @@ impl RenderableModelWithSettings {
 
   pub fn dims_instanced(&self, dims: Vec<ModelDims>) -> RenderableModelWithSettings {
     let mut safe_dims_vec = dims.clone();
-    if safe_dims_vec.len() == 0 {
+    if safe_dims_vec.is_empty() {
       let mut render_settings = self.1.clone();
       render_settings.opacities = None;
       return Self(self.0.clone(), render_settings)
@@ -308,15 +307,19 @@ impl RenderableModelWithSettings {
 }
 
 pub fn size_to_fit<T: Clone>(vec: &mut Vec<T>, target_len: usize) {
-  if vec.len() == 0 {
+  if vec.is_empty() {
     return;
   }
 
-  if vec.len() < (target_len) {
-    let last_elem = vec.last().unwrap().clone();
-    let mut additional_elems = repeat(last_elem).take(target_len - vec.len()).collect::<Vec<T>>();
-    vec.append(&mut additional_elems);
-  } else if vec.len() > (target_len) {
-    vec.truncate(target_len);
+  match vec.len().cmp(&target_len) {
+    std::cmp::Ordering::Less => {
+      let last_elem = vec.last().unwrap().clone();
+      let mut additional_elems = repeat(last_elem).take(target_len - vec.len()).collect::<Vec<T>>();
+      vec.append(&mut additional_elems);
+    },
+    std::cmp::Ordering::Greater => {
+      vec.truncate(target_len);
+    },
+    std::cmp::Ordering::Equal => {},
   }
 }

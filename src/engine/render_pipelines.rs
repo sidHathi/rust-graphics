@@ -48,7 +48,7 @@ impl RenderPipelines {
     let pipeline = {
       let shader = wgpu::ShaderModuleDescriptor {
         label,
-        source: shader_source.into()
+        source: shader_source
       };
       get_render_pipeline(
         device, 
@@ -90,7 +90,7 @@ impl RenderPipelines {
           source: wgpu::ShaderSource::Wgsl(include_str!("debug/debug_line_shader.wgsl").into()),
       };
       get_line_render_pipeline(
-        &device,
+        device,
         &layout,
         config.format,
         Some(Texture::DEPTH_FORMAT),

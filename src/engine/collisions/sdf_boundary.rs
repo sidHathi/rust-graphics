@@ -1,6 +1,6 @@
 use cgmath::{num_traits::abs, Point3, Vector3};
 
-use crate::{engine::transforms::ComponentTransform, sdf::SdfShape};
+use crate::{sdf::SdfShape};
 
 use super::collider::ColliderBoundary;
 
@@ -23,7 +23,7 @@ impl ColliderBoundary for SdfBoundary {
   }
 
   fn center(&self) -> Point3<f32> {
-    self.center.clone()
+    self.center
   }
 
   fn get_boundary_normal(&self, pt: Point3<f32>, tol: f32) -> Option<Vector3<f32>> {

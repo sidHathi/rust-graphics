@@ -1,4 +1,4 @@
-use crate::engine::util::random_quaternion;
+use crate::engine::utils::random_quaternion;
 
 use super::{State, Store};
 

@@ -1,10 +1,10 @@
-use std::result;
 
-use cgmath::Vector4;
-use glyph_brush::{ab_glyph::FontArc, BuiltInLineBreaker, GlyphPositioner, Layout, LineBreak, LineBreaker, Section, SectionGeometry, Text};
+
+
+use glyph_brush::{BuiltInLineBreaker, Layout, Section};
 use wgpu::Color;
 
-use crate::engine::{errors::EngineError, transforms::ModelTransform, Scene};
+use crate::engine::{transforms::ModelTransform, Scene};
 
 use super::{font::FontFace};
 
@@ -87,37 +87,37 @@ impl CGText {
   pub fn font(&self, font_face: FontFace) -> Self {
     let mut new = self.clone();
     new.font_face = font_face;
-    return new
+    new
   }
 
   pub fn transform(&self, transform: ModelTransform) -> Self {
     let mut new = self.clone();
     new.transform = transform;
-    return new
+    new
   }
 
   pub fn color(&self, new_color: Color) -> Self {
     let mut new = self.clone();
     new.color = new_color;
-    return new
+    new
   }
 
   pub fn opacity(&self, opacity: f32) -> Self {
     let mut new = self.clone();
     new.opacity = opacity;
-    return new
+    new
   }
 
   pub fn font_size(&self, font_size: f32) -> Self {
     let mut new = self.clone();
     new.font_size = font_size * 50.;
-    return new
+    new
   }
 
   pub fn wrap(&self, wrap: TextWrapStyle) -> Self {
     let mut new = self.clone();
     new.wrap_style = wrap;
-    return new
+    new
   }
 
   pub fn max_width(&self, max_width: f32) -> Self {

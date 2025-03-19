@@ -1,4 +1,4 @@
-use std::clone;
+
 
 use cgmath::{Quaternion, Vector3};
 
@@ -67,14 +67,14 @@ impl State {
 
   pub fn get_quat(&self) -> Option<Quaternion<f32>> {
     match self {
-      State::Quaternion(val) => Some(val.clone()),
+      State::Quaternion(val) => Some(*val),
       _ => None
     }
   }
 
   pub fn get_vec3(&self) -> Option<Vector3<f32>> {
     match self {
-      State::Vector3(val) => Some(val.clone()),
+      State::Vector3(val) => Some(*val),
       _ => None
     }
   }
@@ -111,15 +111,15 @@ impl Interpolates for State {
 }
 
 pub trait StateListener {
-  fn handle_state_change(&mut self, key: String, state: &State) {
+  fn handle_state_change(&mut self, _key: String, _state: &State) {
     println!("Warning: Component listens for state change without handler");
-    ()
+    
   }
 
   fn add_state_listener(&mut self, scene: &mut Scene, component_key: &ComponentKey, state_key: String) -> Result<(), EngineError> {
     let listener: fn(&mut dyn StateListener, key: String, state: &State) = |component: &mut dyn StateListener, key: String, state: &State| {
       component.handle_state_change(key, state);
     };
-    scene.app_state.listen(component_key.clone(), state_key, listener)
+    scene.app_state.listen(*component_key, state_key, listener)
   }
 }

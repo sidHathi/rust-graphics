@@ -1,11 +1,11 @@
-use wgpu::{util::DeviceExt, PipelineLayoutDescriptor};
+use wgpu::{util::DeviceExt};
 use winit::{
-  dpi::PhysicalPosition, event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent}, window::Window
+  event::{ElementState, KeyboardInput, MouseButton, WindowEvent}, window::Window
 };
 use image::GenericImageView;
 use cgmath::{prelude::*, Vector3};
 
-use crate::graphics::texture;
+
 
 use super::{camera::Projection, pipeline::get_render_pipeline};
 use super::vertex;
@@ -121,9 +121,7 @@ impl State {
     let surface_caps = surface.get_capabilities(&adapter);
 
     let surface_format = surface_caps.formats.iter()
-      .copied()
-      .filter(|f| f.is_srgb())
-      .next()
+      .copied().find(|f| f.is_srgb())
       .unwrap_or(surface_caps.formats[0]);
     let config = wgpu::SurfaceConfiguration {
       usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -283,7 +281,7 @@ impl State {
         let x = SPACE_BETWEEN_INSTANCES * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
         let z = SPACE_BETWEEN_INSTANCES * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
-        let position =  cgmath::Vector3 { x: x as f32, y: 0.0, z: z as f32 };
+        let position =  cgmath::Vector3 { x, y: 0.0, z };
 
         let rotation = if position.is_zero() {
           cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
@@ -310,7 +308,7 @@ impl State {
     );
 
     // load a depth texture
-    let depth_texture = Texture::create_depth_texture(&device, &&config, "depth texture");
+    let depth_texture = Texture::create_depth_texture(&device, &config, "depth texture");
 
     // load the model
     let obj_model = load_model("dice.obj", &device, &queue, &texture_bind_group_layout).await.unwrap();

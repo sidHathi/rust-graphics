@@ -5,11 +5,11 @@ use cgmath::{
 use std::hash::{
   Hash, Hasher
 };
-use std::rc::Rc;
+
 
 use crate::graphics::ModelVertex;
 
-use super::sdf_shape::{self, SdfShape};
+use super::sdf_shape::{SdfShape};
 
 #[derive(Debug, Clone)]
 pub struct TriVertex<'a> {
@@ -23,7 +23,7 @@ impl<'a> TriVertex<'a> {
     // purpose of this is to guarantee that the closest vertex
     // vector is of length 26 (encompasses all possible slots)
     const DEF_ARR_VAL: Option<&'static TriVertex> = None;
-    let default_closest_vertices: Vec<Option<&'static TriVertex>> = Vec::from_iter([DEF_ARR_VAL; 26].into_iter());
+    let default_closest_vertices: Vec<Option<&'static TriVertex>> = Vec::from_iter([DEF_ARR_VAL; 26]);
     let mut closest_vertices_safe = closest_vertices.unwrap_or(default_closest_vertices.clone());
     if closest_vertices_safe.len() < 26 {
       closest_vertices_safe = default_closest_vertices;
@@ -80,13 +80,13 @@ impl<'a> TriVertex<'a> {
     let mut list: Vec<(usize, usize)> = Vec::new();
     for (idx1, v1_opt) in self.closest_vertices.iter().enumerate() {
       // print!("Checking cv idx {} ", idx1);
-      if let Some(v1) = v1_opt {
+      if let Some(_v1) = v1_opt {
         // print!("- Found!");
         for (idx2, v2_opt) in self.closest_vertices.iter().enumerate() {
           // print!("Checking cv idx {} ", idx2);
-          if let Some(v2) = v2_opt {
+          if let Some(_v2) = v2_opt {
             // print!(" - Found!");
-            if (idx1 == idx2) {
+            if idx1 == idx2 {
               continue;
             }
             // check to make sure they're not colinear -> 
@@ -95,8 +95,8 @@ impl<'a> TriVertex<'a> {
             let x_idx_2 = (idx2 as f32 / 9.0).floor() as usize;
             let y_idx_1 = ((idx1 - (9 * x_idx_1)) as f32 / 3.0).floor() as usize;
             let y_idx_2 = ((idx2 - (9 * x_idx_2)) as f32 / 3.0).floor() as usize;
-            let z_idx_1 = (idx1 - (9 * x_idx_1) - (3 * y_idx_1)) as usize;
-            let z_idx_2 = (idx2 - (9 * x_idx_2) - (3 * y_idx_2)) as usize;
+            let z_idx_1 = idx1 - (9 * x_idx_1) - (3 * y_idx_1);
+            let z_idx_2 = idx2 - (9 * x_idx_2) - (3 * y_idx_2);
 
             if (z_idx_1 == 0 && z_idx_2 == 2) || (y_idx_1 == 0 && y_idx_2 == 2) || (x_idx_1 == 0 && x_idx_2 == 2) {
               // skip colinear vertices
@@ -119,7 +119,7 @@ impl<'a> TriVertex<'a> {
     let mut out: String = String::new();
     out += "TriVertex: ";
     out += self.to_string().as_str();
-    return out;
+    out
   }
 }
 
@@ -182,7 +182,7 @@ impl<'a> Triangle<'a> {
   pub fn debug_str(&self) -> String {
     let mut out = String::new();
     out += format!("Triangle: a: {}, b: {}, c: {};", self.a.debug_str(), self.b.debug_str(), self.c.debug_str()).as_str();
-    return out;
+    out
   }
 }
 

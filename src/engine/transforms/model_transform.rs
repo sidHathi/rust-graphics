@@ -1,5 +1,5 @@
-use cgmath::{Matrix, Matrix4, Quaternion, Rad, Rotation3, Vector3};
-use crate::graphics::Instance;
+use cgmath::{Quaternion, Rad, Rotation3, Vector3};
+
 use super::TransformType;
 
 #[derive(Clone, PartialEq, Debug)]

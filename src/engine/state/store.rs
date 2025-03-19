@@ -1,6 +1,6 @@
-use std::{collections::{HashMap, HashSet}, os::macos::raw::stat};
+use std::{collections::{HashMap, HashSet}};
 
-use crate::engine::{component::Component, component_store::{ComponentKey, ComponentStore}, errors::EngineError, Scene};
+use crate::engine::{component_store::{ComponentKey, ComponentStore}, errors::EngineError};
 
 use super::{state::{State, StateListener}, state_interpolator::StateInterpolator};
 
@@ -53,12 +53,10 @@ impl Store {
     if !self.state_map.contains_key(&state_key) {
       return Err(EngineError::ArgumentError { index: 2, name: "state_key".into() })
     }
-    if !self.state_listeners.contains_key(&component_key) {
-      self.state_listeners.insert(component_key.clone(), HashMap::new());
-    }
+    self.state_listeners.entry(component_key).or_insert_with(HashMap::new);
     let listener_map = self.state_listeners.get_mut(&component_key).unwrap();
     let _ = listener_map.insert(state_key.clone(), callback);
-    return Ok(())
+    Ok(())
   }
 
   pub fn trigger_callbacks(&mut self, components: &mut ComponentStore) -> Result<(), EngineError> {
@@ -90,9 +88,9 @@ impl Store {
         let func_opt = cb_map.get(&state_key);
         if let Some(func) = func_opt {
           if !self.triggered_functions.contains_key(comp) {
-            self.triggered_functions.insert(comp.clone(), Vec::new());
+            self.triggered_functions.insert(*comp, Vec::new());
           }
-          self.triggered_functions.get_mut(comp).unwrap().push((state_key.clone(), func.clone()))
+          self.triggered_functions.get_mut(comp).unwrap().push((state_key.clone(), *func))
         }
       }
     }
@@ -133,6 +131,6 @@ impl Store {
   }
 
   pub fn get_interpolating_keys(&self) -> HashSet<&str> {
-    self.interpolators.keys().into_iter().map(|s| s.as_str()).collect()
+    self.interpolators.keys().map(|s| s.as_str()).collect()
   }
 }

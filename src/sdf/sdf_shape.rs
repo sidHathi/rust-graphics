@@ -1,4 +1,4 @@
-use std::cmp::max;
+
 
 use cgmath::{
   num_traits::abs, InnerSpace, MetricSpace, Point3, Vector2, Vector3
@@ -41,7 +41,7 @@ pub enum Shape {
 pub fn SphereSdf(shape: &Shape, point: Point3<f32>) -> f32 {
   match shape {
     Shape::Sphere { center, rad } => {
-      point.distance(center.clone()) - rad
+      point.distance(*center) - rad
     }
     _ => 0.
   }
@@ -49,33 +49,29 @@ pub fn SphereSdf(shape: &Shape, point: Point3<f32>) -> f32 {
 
 pub fn CubeSdf(shape: &Shape, p: Point3<f32>) -> f32 {
   match shape {
-    Shape::Cube { center, width, height, depth } => {
+    Shape::Cube { center: _, width, height, depth } => {
       let half_bounds = Vector3::new(*width/2.,* height/2., *depth/2.);
       let mut d = 0.;
       if abs(p.x) < half_bounds.x && abs(p.y) < half_bounds.y && abs(p.z) < half_bounds.z {
-          return f32::max(f32::max(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y) as f32, abs(p.z) - half_bounds.z as f32);
-      } else if (abs(p.x) < half_bounds.x) {
-          if (abs(p.y) < half_bounds.y) {
+          return f32::max(f32::max(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y) as f32, abs(p.z) - half_bounds.z);
+      } else if abs(p.x) < half_bounds.x {
+          if abs(p.y) < half_bounds.y {
               d = abs(p.z) - half_bounds.z;
+          } else if abs(p.z) < half_bounds.z {
+              d = abs(p.y) - half_bounds.y;
           } else {
-              if (abs(p.z) < half_bounds.z) {
-                  d = abs(p.y) - half_bounds.y;
-              } else {
-                  d = (Vector2::new(abs(p.y) - half_bounds.y, abs(p.z) - half_bounds.z)).magnitude();
-              }
+              d = (Vector2::new(abs(p.y) - half_bounds.y, abs(p.z) - half_bounds.z)).magnitude();
           }
-      } else if (abs(p.y) <= half_bounds.y) {
-          if (abs(p.z) <= half_bounds.z) {
+      } else if abs(p.y) <= half_bounds.y {
+          if abs(p.z) <= half_bounds.z {
               d = abs(p.x) - half_bounds.x;
           } else {
               d = Vector2::new(abs(p.x) - half_bounds.x, abs(p.z) - half_bounds.z).magnitude();
           }
+      } else if abs(p.z) <= half_bounds.z {
+          d = Vector2::new(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y).magnitude();
       } else {
-          if (abs(p.z) <= half_bounds.z) {
-              d = Vector2::new(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y).magnitude();
-          } else {
-              d = Vector3::new(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y, abs(p.z) - half_bounds.z).magnitude();
-          }
+          d = Vector3::new(abs(p.x) - half_bounds.x, abs(p.y) - half_bounds.y, abs(p.z) - half_bounds.z).magnitude();
       }
       d
     }
@@ -107,7 +103,7 @@ impl SdfShape {
   }
 
   pub fn dist(&self, p: Point3<f32>) -> f32 {
-    return (self.sdf_fn)(&self.shape, p);
+    (self.sdf_fn)(&self.shape, p)
   }
 
   pub fn hit(&self, p: Point3<f32>, tol: f32) -> bool {
@@ -124,7 +120,7 @@ impl SdfShape {
     let max_iters = caller_max_iters.unwrap_or(DEFAULT_TRACE_ITERS);
     let tol = caller_tol.unwrap_or(EPSILON);
     let mut iter: usize = 0;
-    let mut loc = p.clone();
+    let mut loc = p;
     while iter < max_iters {
       let dist = self.dist(p);
       loc = loc + (self.compute_normal(loc) * dist);

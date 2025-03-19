@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use anyhow::Error;
-use cgmath::{Matrix4, Point3, Quaternion, Rotation3, Vector3};
-use wgpu::{util::DeviceExt};
+
+use cgmath::{Matrix4, Rotation3, Vector3};
+use wgpu::util::DeviceExt;
 
 use crate::graphics::{load_model, Instance, InstanceRaw, Model};
 
-use super::{component::Component, component_store::ComponentKey, errors::EngineError, renderable_model::{RenderInstance, RenderSettings}, transform_queue::TransformQueue, transforms::{ComponentTransform, GlobalTransform, ModelTransform, TransformType}};
+use super::{component_store::ComponentKey, errors::EngineError, renderable_model::{RenderInstance, RenderSettings}, transform_queue::TransformQueue, transforms::ComponentTransform};
 use super::renderable_model::RenderableModel;
 
 
@@ -14,8 +14,6 @@ pub struct RenderData {
   model: Model,
   instances: Vec<Instance>,
   instance_buf: wgpu::Buffer,
-  opacity: Option<f32>,
-  scale: Option<Vector3<f32>>
 }
 
 pub struct ModelRenderer {
@@ -62,7 +60,7 @@ impl ModelRenderer {
       opacity: 1.,
       scale: Vector3::new(1., 1., 1.)
     };
-    let instance_vec: Vec<Instance> = instances.unwrap_or([default_inst.clone()].into());
+    let instance_vec: Vec<Instance> = instances.unwrap_or([default_inst].into());
     let instance_data = instance_vec
       .iter()
       .map(Instance::to_raw)
@@ -75,14 +73,12 @@ impl ModelRenderer {
       }
     );
 
-    let key = RenderableModel::new(self.next_idx, component_key, filename.into());
+    let key = RenderableModel::new(self.next_idx, component_key, filename);
     
     let data: RenderData = RenderData {
       model,
       instances: instance_vec,
       instance_buf,
-      opacity: None,
-      scale: None
     };
     self.models.insert(key.clone(), data);
     Ok(key)
@@ -121,6 +117,37 @@ impl ModelRenderer {
     self.transform_queue.pop();
   }
 
+  fn update_render_instances(
+    &mut self,
+    model: &RenderableModel,
+    new_instances: Vec<Instance>,
+    queue: &wgpu::Queue,
+    device: &wgpu::Device,
+  ) {
+    let new_buffer_needed = new_instances.len() > self.models.get(model).unwrap().instances.len();
+    let mut render_data = self.models.remove(model).unwrap();
+    render_data.instances = new_instances.clone();
+    let instance_data = render_data.instances
+      .iter()
+      .map(Instance::to_raw)
+      .collect::<Vec<InstanceRaw>>();
+
+    if !new_buffer_needed {
+      // this works when new and old buffers are the same size ->
+      // if they aren't, we need to allocate a new buffer
+      queue.write_buffer(&render_data.instance_buf, 0, bytemuck::cast_slice(&instance_data));
+      self.models.insert(model.clone(), render_data);
+      return;
+    }
+    let new_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+      label: Some("Instance buffer"),
+      contents: bytemuck::cast_slice(&instance_data),
+      usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST
+    });
+    render_data.instance_buf = new_buffer;
+    self.models.insert(model.clone(), render_data);
+  }
+
   pub fn update_render_model(
     &mut self, 
     model: &RenderableModel,
@@ -128,31 +155,41 @@ impl ModelRenderer {
     queue: &wgpu::Queue,
     device: &wgpu::Device,
   ) -> Result<(), EngineError> {
-    if !self.models.contains_key(&model) {
+    if !self.models.contains_key(model) {
       return Err(EngineError::ArgumentError { index: 1, name: "model".into() })
     }
 
     let new_instances = self.transform_queue.transform_instances(new_render_instances);
-    let instance_vec = self.models.get(&model).unwrap().instances.clone();
+    let instance_vec = self.models.get(model).unwrap().instances.clone();
     let mut needs_buf_update = false;
     for (i, instance) in new_instances.iter().enumerate() {
-      if instance_vec[i] != instance.clone() {
+      if instance_vec[i] != *instance {
         needs_buf_update = true;
         break;
       }
     }
     
     if needs_buf_update {
-      let mut render_data = self.models.remove(&model).unwrap();
-      render_data.instances = new_instances.clone();
-      let instance_data = render_data.instances
-        .iter()
-        .map(Instance::to_raw)
-        .collect::<Vec<InstanceRaw>>();
-
-      queue.write_buffer(&render_data.instance_buf, 0, bytemuck::cast_slice(&instance_data));
-      self.models.insert(model.clone(), render_data);
+      self.update_render_instances(model, new_instances, queue, device);
     }
+    Ok(())
+  }
+
+  pub fn add_render_model_instances(
+    &mut self,
+    model: &RenderableModel,
+    new_render_instances: Vec<RenderInstance>, 
+    queue: &wgpu::Queue,
+    device: &wgpu::Device
+  ) -> Result<(), EngineError> {
+    if !self.models.contains_key(model) {
+      return Err(EngineError::ArgumentError { index: 1, name: "model".into() })
+    }
+    let mut new_instances = self.transform_queue.transform_instances(new_render_instances);
+    let mut new_instance_vec = self.models.get(model).unwrap().instances.clone();
+    new_instance_vec.append(&mut new_instances);
+
+    self.update_render_instances(model, new_instance_vec, queue, device);
     Ok(())
   }
 
@@ -176,22 +213,24 @@ impl ModelRenderer {
     }
 
     let render_instances = render_settings.to_render_instances(&self.models.get(model).unwrap().model);
-    let res = self.update_render_model(model, render_instances, queue, device);
+    let res = self.add_render_model_instances(model, render_instances, queue, device);
     self.render_list.push(model.clone());
     res
   }
 
   pub fn clear(&mut self) {
-    self.render_list.clear()
+    self.render_list.clear();
+    for (_, data) in self.models.iter_mut() {
+      data.instances.clear();
+    }
   }
 
-  pub fn get_rendering_models(&self) -> Vec<(&Model, &wgpu::Buffer)> {
+  pub fn get_rendering_models(&self) -> Vec<(&Model, &wgpu::Buffer, usize)> {
     self.render_list.iter()
       .map(|rm| self.models.get(rm))
       .filter(|rd| !rd.is_none())
-      .map(|rd| (&rd.unwrap().model,&rd.unwrap().instance_buf))
-      .into_iter()
-      .collect::<Vec<(&Model, &wgpu::Buffer)>>()
+      .map(|rd| (&rd.unwrap().model, &rd.unwrap().instance_buf, rd.unwrap().instances.len()))
+      .collect::<Vec<(&Model, &wgpu::Buffer, usize)>>()
   }
 
   pub fn get_position_cache(&self) -> &HashMap<ComponentKey, Matrix4<f32>> {

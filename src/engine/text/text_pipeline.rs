@@ -12,7 +12,7 @@ pub fn get_text_render_pipeline(
 
   device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
     label: Some("Text Render Pipeline"),
-    layout: Some(&render_pipeline_layout),
+    layout: Some(render_pipeline_layout),
     vertex: wgpu::VertexState {
       module: &shader,
       entry_point: vert_entry, // 1.

@@ -1,8 +1,8 @@
-use std::{collections::{HashMap, HashSet}, hash::Hash};
+use std::{collections::{HashMap, HashSet}};
 
 use instant::SystemTime;
 
-use crate::engine::{component::{self, Component, ComponentFunctions}, component_store::{ComponentKey, ComponentStore}, errors::EngineError, Scene};
+use crate::engine::{component::{Component}, component_store::{ComponentKey, ComponentStore}, errors::EngineError};
 
 use super::{event::{Event, EventKey, EventListener}, scheduled_event::{ScheduledEvent, ScheduledEventId}};
 
@@ -29,16 +29,14 @@ impl EventManager {
     for (comp, map) in self.event_listeners.iter() {
       if map.contains_key(&event.key) {
         if !self.triggered_events.contains_key(comp) {
-          self.triggered_events.insert(comp.clone(), Vec::new());
+          self.triggered_events.insert(*comp, Vec::new());
         }
         let trigger_vec = self.triggered_events.get_mut(comp).unwrap();
-        trigger_vec.push((event.key.clone(), map.get(&event.key).unwrap().clone()));
+        trigger_vec.push((event.key, *map.get(&event.key).unwrap()));
       }
     }
 
-    if !self.new_events.contains_key(&event.key) {
-      self.new_events.insert(event.key.clone(), Vec::new());
-    }
+    self.new_events.entry(event.key).or_insert_with(Vec::new);
     self.new_events.get_mut(&event.key).unwrap().push(event);
     true
   }
@@ -49,10 +47,8 @@ impl EventManager {
     event: EventKey,
     function: fn(&mut dyn EventListener, Event) -> ()
   ) -> Result<(), EngineError> {
-    if !self.event_listeners.contains_key(&component) {
-      self.event_listeners.insert(component.clone(), HashMap::new());
-    }
-    if !self.event_listeners.get_mut(&component).unwrap().insert(event, function).is_none() {
+    self.event_listeners.entry(component).or_insert_with(HashMap::new);
+    if self.event_listeners.get_mut(&component).unwrap().insert(event, function).is_some() {
       println!("Event listener successfully added");
       return Ok(())
     }
@@ -70,7 +66,7 @@ impl EventManager {
     }
 
     let event_map = self.event_listeners.get_mut(component).unwrap();
-    if !event_map.remove(event).is_none() {
+    if event_map.remove(event).is_some() {
       return Err(EngineError::ArgumentError { index: 2, name: "event".into() });
     }
     Ok(())
@@ -85,21 +81,21 @@ impl EventManager {
       if let Some(component) = components.get_mut(comp) {
         let mut triggered_events: HashSet<EventKey> = HashSet::new();
         for (key, callback) in events {
-          if triggered_events.contains(&key) || !self.new_events.contains_key(&key) {
+          if triggered_events.contains(key) || !self.new_events.contains_key(key) {
             continue;
           }
-          triggered_events.insert(key.clone());
+          triggered_events.insert(*key);
           if !callbacks_to_trigger.contains_key(key) {
-            callbacks_to_trigger.insert(key.clone(), Vec::new());
+            callbacks_to_trigger.insert(*key, Vec::new());
           }
           let cloned = component.clone();
-          callbacks_to_trigger.get_mut(key).unwrap().push((cloned, callback.clone()));
+          callbacks_to_trigger.get_mut(key).unwrap().push((cloned, *callback));
         }
       }
     }
 
     for (key, callbacks) in callbacks_to_trigger.iter_mut() {
-      for event in self.new_events.remove(&key).unwrap_or(Vec::new()) {
+      for event in self.new_events.remove(key).unwrap_or_default() {
         for (component, callback) in callbacks.iter_mut() {
           (*callback)(component, event.clone());
         }
@@ -145,7 +141,7 @@ impl EventManager {
         if se.recurrent {
           se.reset();
         } else {
-          ids_to_remove.push(id.clone())
+          ids_to_remove.push(*id)
         }
       }
     }

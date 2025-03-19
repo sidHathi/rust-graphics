@@ -1,0 +1,8 @@
+# MTL file for sphere with white material
+newmtl default
+Ka 1.000 1.000 1.000  # Ambient color (white)
+Kd 1.000 1.000 1.000  # Diffuse color (white)
+Ks 0.500 0.500 0.500  # Specular color (medium gray for some shine)
+Ns 32.000             # Specular exponent (shininess)
+d 1.000               # Opacity (fully opaque)
+illum 2               # Illumination model (includes ambient, diffuse and specular) 

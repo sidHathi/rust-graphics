@@ -2,18 +2,18 @@
 // https://www.sci.utah.edu/~cscheid/pubs/tpss.pdf
 
 use cgmath::{
-  InnerSpace, Point3, Vector3
+  InnerSpace, Point3
 };
-use image::DynamicImage;
+
 use wgpu::util::DeviceExt;
-use std::clone;
+
 use std::cmp::{
   max,
   min
 };
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::os::macos::raw;
+
+
+
 use std::rc::Rc;
 
 use super::triangle::{
@@ -23,7 +23,6 @@ use super::triangle::{
 use super::triangle_list::TriangleSet;
 use super::sdf_shape::SdfShape;
 use crate::graphics::{
-  Material,
   Mesh,
   ModelVertex,
   Texture,
@@ -31,7 +30,6 @@ use crate::graphics::{
 use super::SdfBounds;
 use crate::util::{
   PointDict,
-  Point,
 };
 
 const MAX_NEIGHBOR_OFFSET: usize = 3;
@@ -50,8 +48,7 @@ pub struct InferredVertexModel {
 
 // safely adds a TriVertex to a raw 3d arr
 fn add_vert<'a>(vertex_arr: &mut Vec<Vec<Vec<Option<TriVertex<'a>>>>>, vert: TriVertex<'a>, x: usize, y: usize, z: usize) {
-  if x < 0 || y < 0 || z < 0 { return }
-  if vertex_arr.len() < x || vertex_arr[x].len() < y || vertex_arr[x][y].len() < z { return }
+  if vertex_arr.len() <= x || vertex_arr[x].len() <= y || vertex_arr[x][y].len() <= z { return }
   vertex_arr[x][y][z] = Some(vert);
 }
 
@@ -100,24 +97,24 @@ fn get_vert_slot(x_idx: usize, y_idx: usize, z_idx: usize, x_j: usize, y_j: usiz
   }
 }
 
-fn get_vertex_neighbors<'a, 'b>(vertex_arr: &'a Vec<Vec<Vec<Option<TriVertex>>>>, vert: &'b TriVertex<'a>, x_idx: usize, y_idx: usize, z_idx: usize) -> Vec<Option<&'b TriVertex<'a>>> {
+fn get_vertex_neighbors<'a, 'b>(vertex_arr: &'a Vec<Vec<Vec<Option<TriVertex>>>>, _vert: &'b TriVertex<'a>, x_idx: usize, y_idx: usize, z_idx: usize) -> Vec<Option<&'b TriVertex<'a>>> {
   // want to get the closest vertex in each direction within a cube
   // of dims 3*granularity for each side
-  let mut neighbors_slice: &mut [Option<&TriVertex>; 26] = &mut [None; 26];
+  let neighbors_slice: &mut [Option<&TriVertex>; 26] = &mut [None; 26];
   for d in 1..MAX_NEIGHBOR_OFFSET {
     for x_j in (max((x_idx as i32) - 3 * (d as i32), 0) as usize)..min(x_idx + 3 * d, vertex_arr.len()) {
       for y_j in (max((y_idx as i32) - 3 * (d as i32), 0) as usize)..min(y_idx + 3 * d, vertex_arr[x_j].len()) {
         for z_j in (max((z_idx as i32) - 3 * (d as i32), 0) as usize)..min(z_idx + 3 * d, vertex_arr[y_j].len()) {
           // only want outermost vertices for the pass -> so if the x, y, z dif
           // from original indices is not equal to d -> skip
-          if !((x_j as i32 - x_idx as i32).abs() as usize == d && (y_j as i32 - y_idx as i32).abs() as usize == d && (z_j as i32 - z_idx as i32).abs() as usize == d) {
+          if !((x_j as i32 - x_idx as i32).unsigned_abs() as usize == d && (y_j as i32 - y_idx as i32).unsigned_abs() as usize == d && (z_j as i32 - z_idx as i32).unsigned_abs() as usize == d) {
             continue;
           }
 
           // check to make sure that a closer vertex at this relative position
           // has not already been added
           let slot = get_vert_slot(x_idx, y_idx, z_idx, x_j, y_j, z_j);
-          if neighbors_slice[slot as usize] != None {
+          if neighbors_slice[slot as usize].is_some() {
             continue;
           }
           neighbors_slice[slot as usize] = vertex_arr[x_j][y_j][z_j].as_ref();
@@ -126,14 +123,14 @@ fn get_vertex_neighbors<'a, 'b>(vertex_arr: &'a Vec<Vec<Vec<Option<TriVertex>>>>
       }
     }
   }
-  return Vec::from(neighbors_slice)
+  Vec::from(neighbors_slice)
 }
 
 fn populate_all_closest_vertices<'a>(vertex_arr: &'a Vec<Vec<Vec<Option<TriVertex<'a>>>>>) -> Vec<Vec<Vec<Option<TriVertex<'a>>>>> {
   // sliding 3x3x3 window
   let mut neighbors_map: PointDict<Vec<Option<&'a TriVertex<'a>>>> = PointDict::new();
   {
-    for (x_idx, plane) in (&vertex_arr).iter().enumerate() {
+    for (x_idx, plane) in vertex_arr.iter().enumerate() {
       // let mut plane_ref = Rc::new(plane);
       // need reference counters for each of the outer loops potentially
       for (y_idx, row) in plane.iter().enumerate() {
@@ -141,7 +138,7 @@ fn populate_all_closest_vertices<'a>(vertex_arr: &'a Vec<Vec<Vec<Option<TriVerte
           if let Some(vert) = vert_opt {
             // get the vertex's neighbors
             // add all of them as references in the triangle
-            let neighbors = get_vertex_neighbors(&vertex_arr, vert, x_idx, y_idx, z_idx);
+            let neighbors = get_vertex_neighbors(vertex_arr, vert, x_idx, y_idx, z_idx);
             neighbors_map.insert(Point3{x: x_idx as f32, y: y_idx as f32, z: z_idx as f32}, neighbors);
           }
         }
@@ -180,7 +177,7 @@ fn get_triangles_from_vertex_list<'a>(vertices: Rc<Vec<Vec<Vec<Option<TriVertex<
             let vert1 = vert.get_neighbor_at_index(idx1).unwrap();
             let vert2 = vert.get_neighbor_at_index(idx2).unwrap();
             let triangle = Triangle::new(vert.clone(), vert1.clone(), vert2.clone());
-            if compare_normal(&sdf_shape, &triangle, normal_tol) {
+            if compare_normal(sdf_shape, &triangle, normal_tol) {
               triangle_set.insert(triangle);
             }
           }
@@ -192,7 +189,7 @@ fn get_triangles_from_vertex_list<'a>(vertices: Rc<Vec<Vec<Vec<Option<TriVertex<
   triangle_set
 }
 
-fn build_mesh<'a>(device: &wgpu::Device, vertex_list_raw: &'a Vec<Vec<Vec<Option<TriVertex>>>>, active_indices: Vec<(usize, usize, usize)>, triangle_list: &TriangleSet, sdf_shape: &SdfShape) -> Mesh {
+fn build_mesh(device: &wgpu::Device, _vertex_list_raw: &Vec<Vec<Vec<Option<TriVertex>>>>, _active_indices: Vec<(usize, usize, usize)>, triangle_list: &TriangleSet, sdf_shape: &SdfShape) -> Mesh {
   // idea:
   // clone the triangle list
   // add each vertex to the vertex list
@@ -211,24 +208,24 @@ fn build_mesh<'a>(device: &wgpu::Device, vertex_list_raw: &'a Vec<Vec<Vec<Option
 
     let mut idx1: u32 = vertices.len() as u32;
     if point_index_map.contains_key(&vert1.loc) {
-      idx1 = point_index_map.get(&vert1.loc).unwrap().clone();
+      idx1 = *point_index_map.get(&vert1.loc).unwrap();
     } else {
       vertices.push(vert1.clone().into_model_vertex(sdf_shape));
-      point_index_map.insert(vert1.loc.clone(), idx1);
+      point_index_map.insert(vert1.loc, idx1);
     }
     let mut idx2: u32 = vertices.len() as u32;
     if point_index_map.contains_key(&vert2.loc) {
-      idx2 = point_index_map.get(&vert2.loc).unwrap().clone();
+      idx2 = *point_index_map.get(&vert2.loc).unwrap();
     } else {
       vertices.push(vert2.clone().into_model_vertex(sdf_shape));
-      point_index_map.insert(vert2.loc.clone(), idx2);
+      point_index_map.insert(vert2.loc, idx2);
     }
     let mut idx3: u32 = vertices.len() as u32;
     if point_index_map.contains_key(&vert3.loc) {
-      idx3 = point_index_map.get(&vert3.loc).unwrap().clone();
+      idx3 = *point_index_map.get(&vert3.loc).unwrap();
     } else {
       vertices.push(vert3.clone().into_model_vertex(sdf_shape));
-      point_index_map.insert(vert3.loc.clone(), idx3);
+      point_index_map.insert(vert3.loc, idx3);
     }
 
     index_list.push(idx1);
@@ -286,11 +283,11 @@ impl InferredVertexModel {
     let mut active_indices: Vec<(usize, usize, usize)> = Vec::new();
     let mut vec_3d: Vec<Vec<Vec<Option<TriVertex<'static>>>>> = Vec::new();
     let mut points: Vec<[Point3<f32>; 3]> = Vec::new();
-    for x in 0..dim_x {
+    for _x in 0..dim_x {
       let mut y_arr: Vec<Vec<Option<TriVertex>>> = Vec::new();
-      for y in 0..dim_y {
+      for _y in 0..dim_y {
         let mut z_arr: Vec<Option<TriVertex>> = Vec::new();
-        for z in 0..dim_z {
+        for _z in 0..dim_z {
           z_arr.push(None);
         }
         y_arr.push(z_arr);
@@ -315,7 +312,7 @@ impl InferredVertexModel {
           if sdf_shape.hit(p, tol) {
             // if the point is within the tol distance from the sdf boundary,
             // -> ideally we would evaluate the point on the sdf boundary where the point is zero? -> 
-            let mut sdf_loc = p.clone();
+            let mut sdf_loc = p;
             sdf_shape.gradient_trace(p, &mut sdf_loc, None, None);
             let vert = TriVertex::new(sdf_loc, curr_idx, None);
             // points.push(sdf_loc.clone());
@@ -330,12 +327,12 @@ impl InferredVertexModel {
     let completed_arr =  populate_all_closest_vertices(&vec_3d);
     let completed_rc = Rc::new(completed_arr);
     // convert the vertices into a list of triangles
-    let triangle_set = get_triangles_from_vertex_list(completed_rc.clone(), &sdf_shape, NORMAL_TOL);
+    let triangle_set = get_triangles_from_vertex_list(completed_rc.clone(), sdf_shape, NORMAL_TOL);
     for triangle in triangle_set.iter() {
       points.push([
-        triangle.a.loc.clone(),
-        triangle.b.loc.clone(),
-        triangle.b.loc.clone(),
+        triangle.a.loc,
+        triangle.b.loc,
+        triangle.b.loc,
       ])
     }
     let mesh = build_mesh(device, &vec_3d, active_indices, &triangle_set, &sdf_shape.clone());
@@ -345,7 +342,7 @@ impl InferredVertexModel {
   fn construct_texture(color: &[u8; 4], size: (u32, u32), device: &wgpu::Device, queue: &wgpu::Queue) -> Texture {
     // creates a texture with uniform color of size size
     // binds to material using wgpu device
-    let num_entries = size.0 * size.1;
+    let _num_entries = size.0 * size.1;
     let mut bytes: Vec<u8> = Vec::new();
     let adjusted_dims = ((1 + (size.0 / 256)) * 256, ( 1 + (size.1 / 256)) * 256);
     let num_entries = adjusted_dims.0 * adjusted_dims.1;
@@ -357,8 +354,8 @@ impl InferredVertexModel {
       bytes.push(color[3]);
     }
 
-    let tex = Texture::from_raw(device, queue, bytes, adjusted_dims, "Generated texture").unwrap();
-    tex
+    
+    Texture::from_raw(device, queue, bytes, adjusted_dims, "Generated texture").unwrap()
   }
 
   pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, sdf_shape: SdfShape, sdf_bounds: SdfBounds, granularity: f32, color: &[u8; 4]) -> InferredVertexModel {
@@ -448,7 +445,7 @@ impl<'a, 'b> DrawIVModel<'b> for wgpu::RenderPass<'a> where 'b: 'a {
     self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
     self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
     self.set_bind_group(0, diffuse_bind_group, &[]);
-    self.set_bind_group(1, &camera_bind_group, &[]);
+    self.set_bind_group(1, camera_bind_group, &[]);
     self.set_bind_group(2, light_bind_group, &[]);
     self.draw_indexed(0..mesh.num_elements, 0, 0..1);
   }

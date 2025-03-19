@@ -1,4 +1,4 @@
-use cgmath::{Matrix, Matrix3, Matrix4, Point3, Quaternion, SquareMatrix, Vector3};
+use cgmath::{Matrix3, Matrix4, Point3, Quaternion, SquareMatrix, Vector3};
 
 use super::{renderable_model::RenderInstance, transforms::{ComponentTransform, GlobalTransform, ModelTransform, TransformType}};
 
@@ -46,10 +46,10 @@ impl TransformQueue {
     let rot_transformed = apply_quaternion_transform(&self.get_transform_matrix(), rot);
     let pos_transformed = to_vec(self.get_transform_matrix().transform_point(to_point(pos)));
     // println!("Queue applied transform to single model. initial pos: {:?}, new pos: {:?}", pos, pos_transformed);
-    return GlobalTransform {
+    GlobalTransform {
       pos: pos_transformed,
       rot: rot_transformed
-    };
+    }
   }
 
   pub fn transform_instances(&self, render_instances: Vec<RenderInstance>) -> Vec<Instance> {
@@ -63,7 +63,6 @@ impl TransformQueue {
           scale: ri.scale
         }
       })
-      .into_iter()
       .collect()
   }
 }

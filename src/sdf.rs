@@ -20,6 +20,5 @@ pub use inferred_vertex_model::{
 pub use sdf_shape::{
   SdfShape,
   Shape,
-  SphereSdf,
   CubeSdf
 };
